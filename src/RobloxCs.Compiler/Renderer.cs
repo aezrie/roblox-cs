@@ -52,6 +52,42 @@ public class Renderer
             case LuaLiteralExpression literal:
                 _sb.Append(literal.Value);
                 break;
+            case LuaAssignmentExpression assign:
+                Visit(assign.Left);
+                _sb.Append(" = ");
+                Visit(assign.Right);
+                break;
+
+            case LuaFunctionExpression func:
+                _sb.Append("function(");
+                _sb.Append(string.Join(", ", func.Parameters));
+                _sb.AppendLine(")");
+                _indent++;
+                foreach (var stmt in func.Body.Statements) Visit(stmt);
+                _indent--;
+                WriteIndent();
+                _sb.Append("end");
+                break;
+
+            case LuaReturnStatement ret:
+                WriteIndent();
+                _sb.Append("return");
+                if (ret.Value != null)
+                {
+                    _sb.Append(" ");
+                    Visit(ret.Value);
+                }
+                _sb.AppendLine();
+                break;
+
+            case LuaBoolExpression b:
+                _sb.Append(b.Value ? "true" : "false");
+                break;
+
+            case LuaNilExpression:
+                _sb.Append("nil");
+                break;
+
         }
     }
 

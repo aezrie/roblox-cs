@@ -1,4 +1,7 @@
+using Roblox.Datatypes;
+
 namespace Roblox.Instances;
+
 public class BasePart : Instance
 {
     public Vector3 Position { get; set; }
