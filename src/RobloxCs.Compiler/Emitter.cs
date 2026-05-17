@@ -8,18 +8,30 @@ namespace RobloxCs.Compiler;
 public class Emitter : CSharpSyntaxWalker
 {
     private readonly SemanticModel _semanticModel;
-    private readonly List<LuaNode> _statements = new();
+    private readonly Stack<List<LuaNode>> _scopeStack = new();
+
+    private List<LuaNode> CurrentScope => _scopeStack.Peek();
 
     public Emitter(SemanticModel semanticModel) : base(SyntaxWalkerDepth.Node)
     {
         _semanticModel = semanticModel;
     }
 
+    private void EmitStatement(LuaNode node) => CurrentScope.Add(node);
+
+    private LuaBlockStatement CaptureBlock(Action visit)
+    {
+        _scopeStack.Push(new List<LuaNode>());
+        visit();
+        return new LuaBlockStatement(_scopeStack.Pop());
+    }
+
     public LuaBlockStatement Emit()
     {
+        _scopeStack.Push(new List<LuaNode>());
         var root = _semanticModel.SyntaxTree.GetRoot();
         Visit(root);
-        return new LuaBlockStatement(_statements);
+        return new LuaBlockStatement(_scopeStack.Pop());
     }
 
     // Handles top-level statements in Program.cs
@@ -35,17 +47,17 @@ public class Emitter : CSharpSyntaxWalker
         {
             var name = variable.Identifier.Text;
             LuaNode? initializer = variable.Initializer != null ? VisitExpression(variable.Initializer.Value) : null;
-            _statements.Add(new LuaLocalDeclarationStatement(name, initializer));
+            EmitStatement(new LuaLocalDeclarationStatement(name, initializer));
         }
     }
 
-    // Handles: print("hello");
+    // Handles: someMethod();
     public override void VisitExpressionStatement(ExpressionStatementSyntax node)
     {
         var expr = VisitExpression(node.Expression);
         if (expr != null)
         {
-            _statements.Add(new LuaExpressionStatement(expr));
+            EmitStatement(new LuaExpressionStatement(expr));
         }
     }
 
@@ -63,35 +75,34 @@ public class Emitter : CSharpSyntaxWalker
     }
 
     private LuaNode VisitInvocation(InvocationExpressionSyntax node)
+    {
+        var symbol = _semanticModel.GetSymbolInfo(node).Symbol as IMethodSymbol;
+
+        // 1. Map Console.WriteLine to Luau's print()
+        if (symbol?.ContainingType?.Name == "Console" && symbol.ContainingType.ContainingNamespace?.ToDisplayString() == "System")
         {
-            var symbol = _semanticModel.GetSymbolInfo(node).Symbol as IMethodSymbol;
-
-            // 1. Map Console.WriteLine to Luau's print()
-            if (symbol?.ContainingType?.Name == "Console" && symbol.ContainingType.ContainingNamespace?.ToDisplayString() == "System")
+            if (symbol.Name == "WriteLine" || symbol.Name == "Write")
             {
-                if (symbol.Name == "WriteLine" || symbol.Name == "Write")
-                {
-                    var args = node.ArgumentList.Arguments.Select(a => VisitExpression(a.Expression)).ToArray();
-                    return new LuaInvocationExpression(new LuaIdentifierExpression("print"), args);
-                }
+                var args = node.ArgumentList.Arguments.Select(a => VisitExpression(a.Expression)).ToArray();
+                return new LuaInvocationExpression(new LuaIdentifierExpression("print"), args);
             }
-
-            // 2. Check if it's Game.GetService<T>()
-            // Check if it's Game.GetService<T>()
-            if (symbol?.Name == "GetService" && symbol.ContainingType?.Name == "Game")
-            {
-                var serviceType = (INamedTypeSymbol?)symbol.ReturnType;
-                return new LuaInvocationExpression(
-                    new LuaMemberAccessExpression(new LuaIdentifierExpression("game"), "GetService", true), // <-- ADD true HERE
-                    new[] { new LuaLiteralExpression($"\"{serviceType?.Name}\"") }
-                );
-            }
-
-            // 3. Standard method call
-            var target = VisitExpression(node.Expression);
-            var arguments = node.ArgumentList.Arguments.Select(a => VisitExpression(a.Expression)).ToArray();
-            return new LuaInvocationExpression(target, arguments);
         }
+
+        // 2. Map Game.GetService<T>() to game:GetService("T")
+        if (symbol?.Name == "GetService" && symbol.ContainingType?.Name == "Game")
+        {
+            var serviceType = (INamedTypeSymbol?)symbol.ReturnType;
+            return new LuaInvocationExpression(
+                new LuaMemberAccessExpression(new LuaIdentifierExpression("game"), "GetService", true),
+                new[] { new LuaLiteralExpression($"\"{serviceType?.Name}\"") }
+            );
+        }
+
+        // 3. Standard method call
+        var target = VisitExpression(node.Expression);
+        var arguments = node.ArgumentList.Arguments.Select(a => VisitExpression(a.Expression)).ToArray();
+        return new LuaInvocationExpression(target, arguments);
+    }
 
     private LuaNode VisitLiteral(LiteralExpressionSyntax node)
     {
