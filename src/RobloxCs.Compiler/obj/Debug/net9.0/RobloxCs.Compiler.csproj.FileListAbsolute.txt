@@ -1,0 +1,13 @@
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/Debug/net9.0/RobloxCs.Compiler.GeneratedMSBuildEditorConfig.editorconfig
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/Debug/net9.0/RobloxCs.Compiler.AssemblyInfoInputs.cache
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/Debug/net9.0/RobloxCs.Compiler.AssemblyInfo.cs
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/Debug/net9.0/RobloxCs.Compiler.csproj.CoreCompileInputs.cache
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/Debug/net9.0/RobloxCs.Compiler.sourcelink.json
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/Debug/net9.0/RobloxCs.Compiler.csproj.AssemblyReference.cache
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/bin/Debug/net9.0/RobloxCs.Compiler.deps.json
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/bin/Debug/net9.0/RobloxCs.Compiler.dll
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/bin/Debug/net9.0/RobloxCs.Compiler.pdb
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/Debug/net9.0/RobloxCs.Compiler.dll
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/Debug/net9.0/refint/RobloxCs.Compiler.dll
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/Debug/net9.0/RobloxCs.Compiler.pdb
+/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/Debug/net9.0/ref/RobloxCs.Compiler.dll

@@ -1,0 +1,226 @@
+{
+  "format": 1,
+  "restore": {
+    "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Cli/RobloxCs.Cli.csproj": {}
+  },
+  "projects": {
+    "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Bindings/RobloxCs.Bindings.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Bindings/RobloxCs.Bindings.csproj",
+        "projectName": "RobloxCs.Bindings",
+        "projectPath": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Bindings/RobloxCs.Bindings.csproj",
+        "packagesPath": "/home/aero/.nuget/packages/",
+        "outputPath": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Bindings/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/aero/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net9.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net9.0": {
+            "targetAlias": "net9.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "9.0.100"
+      },
+      "frameworks": {
+        "net9.0": {
+          "targetAlias": "net9.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[9.0.14, 9.0.14]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/9.0.115/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Cli/RobloxCs.Cli.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Cli/RobloxCs.Cli.csproj",
+        "projectName": "RobloxCs.Cli",
+        "projectPath": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Cli/RobloxCs.Cli.csproj",
+        "packagesPath": "/home/aero/.nuget/packages/",
+        "outputPath": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Cli/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/aero/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net9.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net9.0": {
+            "targetAlias": "net9.0",
+            "projectReferences": {
+              "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Bindings/RobloxCs.Bindings.csproj": {
+                "projectPath": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Bindings/RobloxCs.Bindings.csproj"
+              },
+              "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/RobloxCs.Compiler.csproj": {
+                "projectPath": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/RobloxCs.Compiler.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "9.0.100"
+      },
+      "frameworks": {
+        "net9.0": {
+          "targetAlias": "net9.0",
+          "dependencies": {
+            "Microsoft.CodeAnalysis.CSharp": {
+              "target": "Package",
+              "version": "[5.3.0, )"
+            },
+            "Microsoft.Extensions.DependencyModel": {
+              "target": "Package",
+              "version": "[10.0.8, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[9.0.14, 9.0.14]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/9.0.115/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/RobloxCs.Compiler.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/RobloxCs.Compiler.csproj",
+        "projectName": "RobloxCs.Compiler",
+        "projectPath": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/RobloxCs.Compiler.csproj",
+        "packagesPath": "/home/aero/.nuget/packages/",
+        "outputPath": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/aero/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net9.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net9.0": {
+            "targetAlias": "net9.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "9.0.100"
+      },
+      "frameworks": {
+        "net9.0": {
+          "targetAlias": "net9.0",
+          "dependencies": {
+            "Microsoft.CodeAnalysis.CSharp": {
+              "target": "Package",
+              "version": "[5.3.0, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[9.0.14, 9.0.14]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/9.0.115/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

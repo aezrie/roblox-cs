@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "dgSpecHash": "7nwPhfWiy/E=",
+  "success": true,
+  "projectFilePath": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Compiler/RobloxCs.Compiler.csproj",
+  "expectedPackageFiles": [
+    "/home/aero/.nuget/packages/microsoft.codeanalysis.analyzers/5.3.0-2.25625.1/microsoft.codeanalysis.analyzers.5.3.0-2.25625.1.nupkg.sha512",
+    "/home/aero/.nuget/packages/microsoft.codeanalysis.common/5.3.0/microsoft.codeanalysis.common.5.3.0.nupkg.sha512",
+    "/home/aero/.nuget/packages/microsoft.codeanalysis.csharp/5.3.0/microsoft.codeanalysis.csharp.5.3.0.nupkg.sha512",
+    "/home/aero/.nuget/packages/microsoft.aspnetcore.app.ref/9.0.14/microsoft.aspnetcore.app.ref.9.0.14.nupkg.sha512"
+  ],
+  "logs": []
+}
