@@ -1,18 +1,47 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using RobloxCs.Compiler;
 using System.IO;
 using System.Runtime.InteropServices;
 
-// 1. The "User's" Roblox C# Code
+// 1. The "User's" Roblox C# Code — Phase 2 test harness
 string userCode = """
 using System;
 using Roblox;
 using Roblox.Services;
 using Roblox.Instances;
 
+// GetService + print
 Players players = Game.GetService<Players>();
-Console.WriteLine("Hello from roblox-cs on Arch Linux!");
+Console.WriteLine("Server started!");
+
+// Event subscription with lambda body
+players.PlayerAdded += (Player player) =>
+{
+    Console.WriteLine("Player joined!");
+
+    // if / else
+    if (player != null)
+    {
+        Console.WriteLine("Player is valid");
+    }
+    else
+    {
+        Console.WriteLine("Player was null somehow");
+    }
+};
+
+// Binary operations and Loops
+int count = 0;
+while (count < 10)
+{
+    count = count + 1;
+}
+
+foreach (var p in players.GetPlayers())
+{
+    Console.WriteLine(p.Name);
+}
 """;
 
 // 2. Setup Roslyn references

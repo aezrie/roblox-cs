@@ -75,18 +75,74 @@ public class Emitter : CSharpSyntaxWalker
             EmitStatement(new LuaExpressionStatement(expr));
     }
 
+    // Handles: return expr;
+    public override void VisitReturnStatement(ReturnStatementSyntax node)
+    {
+        var value = node.Expression != null ? VisitExpression(node.Expression) : null;
+        EmitStatement(new LuaReturnStatement(value));
+    }
+
+    // Handles: if (cond) { } else if (cond2) { } else { }
+    public override void VisitIfStatement(IfStatementSyntax node)
+    {
+        var condition = VisitExpression(node.Condition);
+        var thenBlock = CaptureBlock(() => Visit(node.Statement));
+
+        var elseIfs = new List<(LuaNode Condition, LuaBlockStatement Body)>();
+        LuaBlockStatement? elseBlock = null;
+
+        var current = node.Else?.Statement;
+        while (current is IfStatementSyntax elseIf)
+        {
+            elseIfs.Add((VisitExpression(elseIf.Condition), CaptureBlock(() => Visit(elseIf.Statement))));
+            current = elseIf.Else?.Statement;
+        }
+        if (current != null)
+            elseBlock = CaptureBlock(() => Visit(current));
+
+        EmitStatement(new LuaIfStatement(condition, thenBlock, elseIfs, elseBlock));
+    }
+
+    // Handles: foreach (var item in collection) { }
+    public override void VisitForEachStatement(ForEachStatementSyntax node)
+    {
+        var collection = VisitExpression(node.Expression);
+        var body = CaptureBlock(() => Visit(node.Statement));
+        EmitStatement(new LuaForEachStatement(node.Identifier.Text, collection, body));
+    }
+
+    // Handles: while (cond) { }
+    public override void VisitWhileStatement(WhileStatementSyntax node)
+    {
+        var condition = VisitExpression(node.Condition);
+        var body = CaptureBlock(() => Visit(node.Statement));
+        EmitStatement(new LuaWhileStatement(condition, body));
+    }
+
+    // Handles blocks: { stmt1; stmt2; }
+    public override void VisitBlock(BlockSyntax node)
+    {
+        foreach (var stmt in node.Statements)
+            Visit(stmt);
+    }
+
     // Dispatches expressions to their specific visitors
     private LuaNode VisitExpression(ExpressionSyntax node)
     {
         return node switch
         {
-            InvocationExpressionSyntax invocation         => VisitInvocation(invocation),
-            LiteralExpressionSyntax literal               => VisitLiteral(literal),
-            IdentifierNameSyntax identifier               => VisitIdentifier(identifier),
-            MemberAccessExpressionSyntax memberAccess     => VisitMemberAccess(memberAccess),
-            AssignmentExpressionSyntax assignment         => VisitAssignment(assignment),
-            LambdaExpressionSyntax lambda                 => VisitLambda(lambda),
-            _ => new LuaLiteralExpression($"-- UNHANDLED: {node.GetType().Name}")
+            InvocationExpressionSyntax invocation             => VisitInvocation(invocation),
+            LiteralExpressionSyntax literal                   => VisitLiteral(literal),
+            IdentifierNameSyntax identifier                   => VisitIdentifier(identifier),
+            MemberAccessExpressionSyntax memberAccess         => VisitMemberAccess(memberAccess),
+            AssignmentExpressionSyntax assignment             => VisitAssignment(assignment),
+            LambdaExpressionSyntax lambda                     => VisitLambda(lambda),
+            BinaryExpressionSyntax binary                     => VisitBinary(binary),
+            PrefixUnaryExpressionSyntax prefixUnary           => VisitPrefixUnary(prefixUnary),
+            ParenthesizedExpressionSyntax paren               => VisitExpression(paren.Expression),
+            ObjectCreationExpressionSyntax objCreate          => VisitObjectCreation(objCreate),
+            DefaultExpressionSyntax                           => new LuaNilExpression(),
+            _ => new LuaLiteralExpression($"--[[UNHANDLED: {node.GetType().Name}]]")
         };
     }
 
@@ -94,7 +150,7 @@ public class Emitter : CSharpSyntaxWalker
     {
         var symbol = _semanticModel.GetSymbolInfo(node).Symbol as IMethodSymbol;
 
-        // 1. Map Console.WriteLine to print()
+        // 1. Map Console.WriteLine / Console.Write to print()
         if (symbol?.ContainingType?.Name == "Console" &&
             symbol.ContainingType.ContainingNamespace?.ToDisplayString() == "System")
         {
@@ -135,7 +191,7 @@ public class Emitter : CSharpSyntaxWalker
     }
 
     // Handles: players.PlayerAdded += handler  ->  players.PlayerAdded:Connect(handler)
-    //          players.PlayerAdded -= handler  ->  (stored disconnect, future phase)
+    //          a = b  ->  a = b
     private LuaNode VisitAssignment(AssignmentExpressionSyntax node)
     {
         if (node.Kind() == SyntaxKind.AddAssignmentExpression)
@@ -187,6 +243,56 @@ public class Emitter : CSharpSyntaxWalker
         return new LuaFunctionExpression(parameters, body);
     }
 
+    // Handles binary expressions: a + b, a == b, a && b, etc.
+    private LuaNode VisitBinary(BinaryExpressionSyntax node)
+    {
+        var left = VisitExpression(node.Left);
+        var right = VisitExpression(node.Right);
+        var luaOp = node.Kind() switch
+        {
+            // String concat: + on strings becomes ..
+            SyntaxKind.AddExpression                    => IsStringType(node.Left) || IsStringType(node.Right) ? ".." : "+",
+            SyntaxKind.SubtractExpression               => "-",
+            SyntaxKind.MultiplyExpression               => "*",
+            SyntaxKind.DivideExpression                 => "/",
+            SyntaxKind.ModuloExpression                 => "%",
+            SyntaxKind.EqualsExpression                 => "==",
+            SyntaxKind.NotEqualsExpression              => "~=",
+            SyntaxKind.LessThanExpression               => "<",
+            SyntaxKind.GreaterThanExpression            => ">",
+            SyntaxKind.LessThanOrEqualExpression        => "<=",
+            SyntaxKind.GreaterThanOrEqualExpression     => ">=",
+            SyntaxKind.LogicalAndExpression             => "and",
+            SyntaxKind.LogicalOrExpression              => "or",
+            _ => node.OperatorToken.Text
+        };
+        return new LuaBinaryExpression(left, luaOp, right);
+    }
+
+    // Handles prefix unary: !x -> not x, -x -> -x
+    private LuaNode VisitPrefixUnary(PrefixUnaryExpressionSyntax node)
+    {
+        var operand = VisitExpression(node.Operand);
+        var luaOp = node.Kind() switch
+        {
+            SyntaxKind.LogicalNotExpression => "not",
+            SyntaxKind.UnaryMinusExpression => "-",
+            _ => node.OperatorToken.Text
+        };
+        return new LuaUnaryExpression(luaOp, operand);
+    }
+
+    // Handles: new Vector3(1, 2, 3) -> Vector3.new(1, 2, 3)
+    private LuaNode VisitObjectCreation(ObjectCreationExpressionSyntax node)
+    {
+        var typeName = node.Type.ToString();
+        var target = new LuaMemberAccessExpression(new LuaIdentifierExpression(typeName), "new", false);
+        var args = (node.ArgumentList?.Arguments ?? default)
+            .Select(a => VisitExpression(a.Expression))
+            .ToArray();
+        return new LuaInvocationExpression(target, args);
+    }
+
     private LuaNode VisitLiteral(LiteralExpressionSyntax node)
     {
         var value = node.Token.Value;
@@ -209,7 +315,12 @@ public class Emitter : CSharpSyntaxWalker
     {
         var expression = VisitExpression(node.Expression);
         var receiverType = _semanticModel.GetTypeInfo(node.Expression).Type;
-        var useColon = IsRobloxInstance(receiverType);
+        var memberSymbol = _semanticModel.GetSymbolInfo(node).Symbol;
+
+        // Only methods use colon syntax in Luau; properties, events, and fields use dot.
+        // (For actual invocations, VisitInvocation will re-evaluate and override this flag.)
+        var isMethod = memberSymbol?.Kind == SymbolKind.Method;
+        var useColon = isMethod && IsRobloxInstance(receiverType);
         return new LuaMemberAccessExpression(expression, node.Name.Identifier.Text, useColon);
     }
 
@@ -221,5 +332,11 @@ public class Emitter : CSharpSyntaxWalker
             MemberAccessExpressionSyntax m => _semanticModel.GetTypeInfo(m.Expression).Type,
             _ => null
         };
+    }
+
+    private bool IsStringType(ExpressionSyntax node)
+    {
+        var type = _semanticModel.GetTypeInfo(node).Type;
+        return type?.SpecialType == SpecialType.System_String;
     }
 }
