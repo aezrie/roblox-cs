@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RobloxCs.Bindings")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+34234d87bd21ae1f3e5ed5baac2f64d3846c4ab6")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+88c7c6a8e13d7d1daa78b651a664e10cc64bd53a")]
 [assembly: System.Reflection.AssemblyProductAttribute("RobloxCs.Bindings")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RobloxCs.Bindings")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

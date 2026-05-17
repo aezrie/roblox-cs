@@ -161,10 +161,42 @@ public class Emitter : CSharpSyntaxWalker
             BinaryExpressionSyntax binary                     => VisitBinary(binary),
             PrefixUnaryExpressionSyntax prefixUnary           => VisitPrefixUnary(prefixUnary),
             ParenthesizedExpressionSyntax paren               => VisitExpression(paren.Expression),
+            CastExpressionSyntax cast                         => VisitExpression(cast.Expression),
             ObjectCreationExpressionSyntax objCreate          => VisitObjectCreation(objCreate),
+            ConditionalAccessExpressionSyntax condAccess      => VisitConditionalAccess(condAccess),
             DefaultExpressionSyntax                           => new LuaNilExpression(),
             _ => new LuaLiteralExpression($"--[[UNHANDLED: {node.GetType().Name}]]")
         };
+    }
+
+
+    // Handles: a?.B  -> a and a.B
+    //          a?.B?.C -> (a and a.B) and a.B.C  (safe: only reaches a.B.C when a.B is truthy)
+    private LuaNode VisitConditionalAccess(ConditionalAccessExpressionSyntax node)
+    {
+        // Flatten the chain: collect member names from innermost to outermost
+        var members = new List<string>();
+        ExpressionSyntax root = node;
+        while (root is ConditionalAccessExpressionSyntax ca)
+        {
+            if (ca.WhenNotNull is MemberBindingExpressionSyntax binding)
+                members.Insert(0, binding.Name.Identifier.Text);
+            root = ca.Expression;
+        }
+
+        // root is the base receiver (e.g., `player`)
+        var baseExpr = VisitExpression(root);
+
+        // Build: base and base.M1 and base.M1.M2 ...
+        // Each step: current = previous.Member; result = result and current
+        LuaNode current = baseExpr;
+        LuaNode result = baseExpr;
+        foreach (var member in members)
+        {
+            current = new LuaMemberAccessExpression(current, member, false);
+            result = new LuaBinaryExpression(result, "and", current);
+        }
+        return result;
     }
 
     private LuaNode VisitInvocation(InvocationExpressionSyntax node)
@@ -285,6 +317,8 @@ public class Emitter : CSharpSyntaxWalker
             SyntaxKind.GreaterThanOrEqualExpression     => ">=",
             SyntaxKind.LogicalAndExpression             => "and",
             SyntaxKind.LogicalOrExpression              => "or",
+            // ?? (null-coalescing) maps to `or` in Luau: a ?? b -> a or b
+            SyntaxKind.CoalesceExpression               => "or",
             _ => node.OperatorToken.Text
         };
         return new LuaBinaryExpression(left, luaOp, right);

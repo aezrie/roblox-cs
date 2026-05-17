@@ -2,7 +2,7 @@ using Roblox.Datatypes;
 
 namespace Roblox.Instances;
 
-public class BasePart : Instance
+public class BasePart : PVInstance
 {
     public Vector3 Position { get; set; }
     public Vector3 Size { get; set; }

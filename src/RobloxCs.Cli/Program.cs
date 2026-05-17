@@ -4,23 +4,35 @@ using RobloxCs.Compiler;
 using System.IO;
 using System.Runtime.InteropServices;
 
-// 1. The "User's" Roblox C# Code — Phase 2 test harness
+// 1. The "User's" Roblox C# Code — Phase 3 test harness
 string userCode = """
 using System;
 using Roblox;
 using Roblox.Services;
 using Roblox.Instances;
 
-// GetService + print
 Players players = Game.GetService<Players>();
 Console.WriteLine("Server started!");
 
-// Event subscription with lambda body
+// Event subscription with if/else inside lambda
 players.PlayerAdded += (Player player) =>
 {
     Console.WriteLine("Player joined!");
 
-    // if / else
+    // Null-conditional: player?.Character -> player and player.Character
+    var character = player?.Character;
+
+    character?.Humanoid.HealthChanged += (float health) =>
+    {
+        Console.WriteLine($"Health changed to {health}");
+    };
+
+    // Chained null-conditional: player?.Character?.Parent -> (player and player.Character) and player.Character.Parent
+    var parent = player?.Character?.Parent;
+
+    // Null-coalescing: character ?? player -> character or player
+    var target = (Instance?)character ?? player;
+
     if (player != null)
     {
         Console.WriteLine("Player is valid");
@@ -31,23 +43,22 @@ players.PlayerAdded += (Player player) =>
     }
 };
 
-// Binary operations and Loops
+// while loop
 int count = 0;
 while (count < 10)
 {
     count = count + 1;
 }
 
+// foreach loop
 foreach (var p in players.GetPlayers())
 {
     Console.WriteLine(p.Name);
 }
 """;
 
-// 2. Setup Roslyn references
 var references = new List<MetadataReference>();
 
-// A. Load ALL core .NET runtime DLLs (Console, Runtime, Collections, etc.)
 var runtimeDir = RuntimeEnvironment.GetRuntimeDirectory();
 foreach (var dll in Directory.GetFiles(runtimeDir, "*.dll"))
 {
