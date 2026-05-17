@@ -9,6 +9,9 @@ public class Emitter : CSharpSyntaxWalker
 {
     private readonly SemanticModel _semanticModel;
     private readonly Stack<List<LuaNode>> _scopeStack = new();
+    // Maps local variable name -> Roblox service type name for GetService<T>() assignments
+    // e.g. "players" -> "Players" so usages become game.Players instead of a local var
+    private readonly Dictionary<string, string> _serviceVariables = new();
 
     private List<LuaNode> CurrentScope => _scopeStack.Peek();
 
@@ -60,6 +63,24 @@ public class Emitter : CSharpSyntaxWalker
         foreach (var variable in node.Declaration.Variables)
         {
             var name = variable.Identifier.Text;
+
+            // Detect: SomeService x = Game.GetService<SomeService>();
+            // Instead of emitting a local variable, record the mapping so that
+            // usages of `x` are inlined as `game.SomeService` everywhere.
+            if (variable.Initializer?.Value is InvocationExpressionSyntax initInvoc)
+            {
+                var sym = _semanticModel.GetSymbolInfo(initInvoc).Symbol as IMethodSymbol;
+                if (sym?.Name == "GetService" && sym.ContainingType?.Name == "Game")
+                {
+                    var serviceType = (INamedTypeSymbol?)sym.ReturnType;
+                    if (serviceType != null)
+                    {
+                        _serviceVariables[name] = serviceType.Name;
+                        continue; // skip emitting the local declaration
+                    }
+                }
+            }
+
             LuaNode? initializer = variable.Initializer != null
                 ? VisitExpression(variable.Initializer.Value)
                 : null;
@@ -307,7 +328,11 @@ public class Emitter : CSharpSyntaxWalker
 
     private LuaNode VisitIdentifier(IdentifierNameSyntax node)
     {
-        return new LuaIdentifierExpression(node.Identifier.Text);
+        var name = node.Identifier.Text;
+        // If this identifier was a GetService<T>() variable, inline it as game.ServiceName
+        if (_serviceVariables.TryGetValue(name, out var serviceName))
+            return new LuaMemberAccessExpression(new LuaIdentifierExpression("game"), serviceName, false);
+        return new LuaIdentifierExpression(name);
     }
 
     // Resolves whether to use colon based on whether the receiver inherits from Instance

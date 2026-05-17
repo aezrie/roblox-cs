@@ -42,13 +42,13 @@ Here is the roadmap to build out the rest of the transpiler, ordered by priority
 ## Phase 2: Core Game Loop Features
 *Goal: Write a basic client-server script that compiles.*
 
-- [ ] **Events (`+=` / `-=`):** Map C# event subscriptions to `:Connect()` and `:Disconnect()`. 
+- [x] **Events (`+=` / `-=`):** Map C# event subscriptions to `:Connect()` and `:Disconnect()`.
   - C#: `players.PlayerAdded += ...` -> Luau: `players.PlayerAdded:Connect(...)`
-- [ ] **Lambda to Function:** Translate C# `() => ...` or `(Player p) => ...` to `function() ... end` or `function(p) ... end`.
-- [ ] **Basic Types:** Ensure `int`, `float`, `string`, and `bool` literals map correctly to Luau numbers, strings, and booleans.
-- [ ] **Control Flow:** Implement visitors for `if/else if/else` and `return` statements.
-- [ ] **Loops:** Implement `foreach` over Roblox collections (maps to `for _, item in collection do`).
-- [ ] **Method Calls on Instances:** Generalize method invocations on `[RobloxService]` types to automatically use the `:` syntax (e.g., `players.GetPlayers()` -> `players:GetPlayers()`).
+- [x] **Lambda to Function:** Translate C# `() => ...` or `(Player p) => ...` to `function() ... end` or `function(p) ... end`.
+- [x] **Basic Types:** Ensure `int`, `float`, `string`, and `bool` literals map correctly to Luau numbers, strings, and booleans.
+- [x] **Control Flow:** Implement visitors for `if/else if/else` and `return` statements.
+- [x] **Loops:** Implement `foreach` over Roblox collections (maps to `for _, item in collection do`) and `while`.
+- [x] **Method Calls on Instances:** Generalize method invocations on `[RobloxService]` types to automatically use the `:` syntax (e.g., `players.GetPlayers()` -> `players:GetPlayers()`). Properties/events correctly use `.`.
 
 ## Phase 3: Async/Await & Safe Navigation
 *Goal: Eliminate Roblox coroutine boilerplate and nil-checking spam.*
