@@ -164,6 +164,7 @@ public class Emitter : CSharpSyntaxWalker
             CastExpressionSyntax cast                         => VisitExpression(cast.Expression),
             ObjectCreationExpressionSyntax objCreate          => VisitObjectCreation(objCreate),
             ConditionalAccessExpressionSyntax condAccess      => VisitConditionalAccess(condAccess),
+            InterpolatedStringExpressionSyntax interpolated => VisitInterpolatedString(interpolated),
             DefaultExpressionSyntax                           => new LuaNilExpression(),
             _ => new LuaLiteralExpression($"--[[UNHANDLED: {node.GetType().Name}]]")
         };
@@ -261,10 +262,122 @@ public class Emitter : CSharpSyntaxWalker
             }
         }
 
-        // Plain assignment: a = b
+        // -=  on events -> store connection and call :Disconnect()
+        // We emit: eventTarget:Connect(handler) normally on +=
+        // For -= we emit a disconnect call if the symbol is an event
+        if (node.Kind() == SyntaxKind.SubtractAssignmentExpression)
+        {
+            var symbol = _semanticModel.GetSymbolInfo(node.Left).Symbol;
+            if (symbol?.Kind == SymbolKind.Event)
+            {
+                // Emit: connectionVar:Disconnect()
+                // The user is expected to store the connection in a variable
+                var connVar = VisitExpression(node.Right);
+                return new LuaInvocationExpression(
+                    new LuaMemberAccessExpression(connVar, "Disconnect", true),
+                    Array.Empty<LuaNode>()
+                );
+            }
+        }
+
         var left = VisitExpression(node.Left);
         var right = VisitExpression(node.Right);
         return new LuaAssignmentExpression(left, right);
+    }
+
+    // Handles: $"Hello {name} you have {health} hp"
+    // -> "Hello " .. tostring(name) .. " you have " .. tostring(health) .. " hp"
+    private LuaNode VisitInterpolatedString(InterpolatedStringExpressionSyntax node)
+    {
+        var parts = new List<LuaNode>();
+
+        foreach (var content in node.Contents)
+        {
+            switch (content)
+            {
+                case InterpolatedStringTextSyntax text:
+                    var raw = text.TextToken.ValueText;
+                    if (!string.IsNullOrEmpty(raw))
+                        parts.Add(new LuaLiteralExpression($"\"{raw}\""));
+                    break;
+
+                case InterpolationSyntax interpolation:
+                    var expr = VisitExpression(interpolation.Expression);
+                    var exprType = _semanticModel.GetTypeInfo(interpolation.Expression).Type;
+
+                    // Strings don't need tostring(), everything else does
+                    var isString = exprType?.SpecialType == SpecialType.System_String;
+                    var part = isString
+                        ? expr
+                        : new LuaInvocationExpression(
+                            new LuaIdentifierExpression("tostring"),
+                            new[] { expr });
+                    parts.Add(part);
+                    break;
+            }
+        }
+
+        // Fold parts into: a .. b .. c
+        if (parts.Count == 0) return new LuaLiteralExpression("\"\"");
+        if (parts.Count == 1) return parts[0];
+
+        LuaNode result = parts[0];
+        for (int i = 1; i < parts.Count; i++)
+            result = new LuaBinaryExpression(result, "..", parts[i]);
+
+        return result;
+    }
+
+    // Handles: for (int i = 0; i < 10; i++) -> for i = 0, 9 do
+    // Handles: for (int i = 0; i < 10; i += 2) -> for i = 0, 9, 2 do
+    public override void VisitForStatement(ForStatementSyntax node)
+    {
+        // Extract loop variable name and start value
+        var varName = node.Declaration?.Variables.FirstOrDefault()?.Identifier.Text ?? "i";
+        var startExpr = node.Declaration?.Variables.FirstOrDefault()?.Initializer?.Value;
+        var start = startExpr != null ? VisitExpression(startExpr) : new LuaLiteralExpression("0");
+
+        // Extract limit from condition: i < n -> limit = n - 1, i <= n -> limit = n
+        LuaNode limit = new LuaLiteralExpression("0");
+        if (node.Condition is BinaryExpressionSyntax cond)
+        {
+            var limitExpr = VisitExpression(cond.Right);
+            limit = cond.Kind() switch
+            {
+                // i < n  -> for i = start, n - 1
+                SyntaxKind.LessThanExpression =>
+                    new LuaBinaryExpression(limitExpr, "-", new LuaLiteralExpression("1")),
+                // i <= n -> for i = start, n
+                SyntaxKind.LessThanOrEqualExpression => limitExpr,
+                // i > n  -> for i = start, n + 1 (descending)
+                SyntaxKind.GreaterThanExpression =>
+                    new LuaBinaryExpression(limitExpr, "+", new LuaLiteralExpression("1")),
+                // i >= n -> for i = start, n (descending)
+                SyntaxKind.GreaterThanOrEqualExpression => limitExpr,
+                _ => limitExpr
+            };
+        }
+
+        // Extract step from incrementor: i++ -> 1, i-- -> -1, i += n -> n, i -= n -> -n
+        LuaNode? step = null;
+        var incrementor = node.Incrementors.FirstOrDefault();
+        if (incrementor != null)
+        {
+            step = incrementor switch
+            {
+                PostfixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.PostIncrementExpression } => null, // default step 1, omit
+                PostfixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.PostDecrementExpression } =>
+                    new LuaLiteralExpression("-1"),
+                AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.AddAssignmentExpression } asgn =>
+                    VisitExpression(asgn.Right),
+                AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.SubtractAssignmentExpression } asgn =>
+                    new LuaUnaryExpression("-", VisitExpression(asgn.Right)),
+                _ => null
+            };
+        }
+
+        var body = CaptureBlock(() => Visit(node.Statement));
+        EmitStatement(new LuaNumericForStatement(varName, start, limit, step, body));
     }
 
     // Handles: () => expr  and  (Player p) => { ... }

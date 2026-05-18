@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RobloxCs.Compiler")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+88c7c6a8e13d7d1daa78b651a664e10cc64bd53a")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+67281cccba12566d272da5105949ee3226235bfe")]
 [assembly: System.Reflection.AssemblyProductAttribute("RobloxCs.Compiler")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RobloxCs.Compiler")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

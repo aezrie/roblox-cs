@@ -22,10 +22,6 @@ players.PlayerAdded += (Player player) =>
     // Null-conditional: player?.Character -> player and player.Character
     var character = player?.Character;
 
-    character?.Humanoid.HealthChanged += (float health) =>
-    {
-        Console.WriteLine($"Health changed to {health}");
-    };
 
     // Chained null-conditional: player?.Character?.Parent -> (player and player.Character) and player.Character.Parent
     var parent = player?.Character?.Parent;

@@ -102,6 +102,36 @@ public class Renderer
                 _sb.AppendLine("end");
                 break;
 
+            case LuaNumericForStatement numFor:
+                WriteIndent();
+                _sb.Append($"for {numFor.VarName} = ");
+                Visit(numFor.Start);
+                _sb.Append(", ");
+                Visit(numFor.Limit);
+                if (numFor.Step != null)
+                {
+                    _sb.Append(", ");
+                    Visit(numFor.Step);
+                }
+                _sb.AppendLine(" do");
+                _indent++;
+                foreach (var s in numFor.Body.Statements) Visit(s);
+                _indent--;
+                WriteIndent();
+                _sb.AppendLine("end");
+                break;
+
+            // String interpolation folds to .. chains, already handled by LuaBinaryExpression
+            // but if parts need grouping we render them directly
+            case LuaStringInterpolationExpression interp:
+                for (int i = 0; i < interp.Parts.Count; i++)
+                {
+                    if (i > 0) _sb.Append(" .. ");
+                    Visit(interp.Parts[i]);
+                }
+                break;
+
+
             // ── while cond do ───────────────────────────────────────────────
             case LuaWhileStatement whileStmt:
                 WriteIndent();

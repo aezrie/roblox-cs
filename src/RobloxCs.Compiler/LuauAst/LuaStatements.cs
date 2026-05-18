@@ -21,3 +21,11 @@ public record LuaForEachStatement(
 
 public record LuaWhileStatement(LuaNode Condition, LuaBlockStatement Body) : LuaNode;
 public record LuaDoStatement(LuaBlockStatement Body) : LuaNode;
+
+public record LuaNumericForStatement(
+    string VarName,
+    LuaNode Start,
+    LuaNode Limit,
+    LuaNode? Step,
+    LuaBlockStatement Body
+) : LuaNode;

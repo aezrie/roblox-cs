@@ -12,3 +12,4 @@ public record LuaIndexExpression(LuaNode Table, LuaNode Key) : LuaNode;
 public record LuaNilExpression() : LuaNode;
 public record LuaBoolExpression(bool Value) : LuaNode;
 public record LuaAssignmentExpression(LuaNode Left, LuaNode Right) : LuaNode;
+public record LuaStringInterpolationExpression(List<LuaNode> Parts) : LuaNode;
