@@ -5,21 +5,20 @@ namespace Roblox.Instances;
 
 public class Model : PVInstance
 {
-    public BasePart? PrimaryPart { get; set; }
+    // Properties
+    public object? ModelStreamingMode { get; set; } = null!;
+    public object? PrimaryPart { get; set; } = null!;
     public CFrame WorldPivot { get; set; }
 
-    public (CFrame Orientation, Vector3 Size) GetBoundingBox() => default;
-    public Vector3 GetExtentsSize() => default;
+    // Methods
+    public object AddPersistentPlayer(object? playerInstance = null) => null!;
+    public void GetBoundingBox() { }
+    public Vector3 GetExtentsSize() => default!;
+    public object GetPersistentPlayers() => null!;
+    public float GetScale() => default!;
+    public object MoveTo(Vector3 position) => null!;
+    public object RemovePersistentPlayer(object? playerInstance = null) => null!;
+    public object ScaleTo(float newScaleFactor) => null!;
+    public object TranslateBy(Vector3 delta) => null!;
 
-    public void MoveTo(Vector3 position) { }
-    public void TranslateBy(Vector3 delta) { }
-    public void ScaleTo(float newScaleFactor) { }
-    public float GetScale() => default;
-
-    public void MakeJoints() { }
-    public void BreakJoints() { }
-
-    public void AddPersistentPlayer(Player player) { }
-    public void RemovePersistentPlayer(Player player) { }
-    public Player[] GetPersistentPlayers() => null!;
 }

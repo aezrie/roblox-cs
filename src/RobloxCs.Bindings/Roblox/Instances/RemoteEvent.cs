@@ -2,19 +2,14 @@ using System;
 
 namespace Roblox.Instances;
 
-public class RemoteEvent : Instance
+public class RemoteEvent : BaseRemoteEvent
 {
-    // Server-side: fires when a client calls FireServer()
-    public event Action<Player, object[]> OnServerEvent = null!;
+    // Methods
+    public object FireAllClients(object[]? arguments) => null!;
+    public object FireClient(object? player, object[]? arguments) => null!;
+    public object FireServer(object[]? arguments) => null!;
 
+    // Events
     public event Action<object[]> OnClientEvent = null!;
-
-    // Client -> Server
-    public void FireServer(params object[] args) { }
-
-    // Server -> specific client
-    public void FireClient(Player player, params object[] args) { }
-
-    // Server -> all clients
-    public void FireAllClients(params object[] args) { }
+    public event Action<object, object[]> OnServerEvent = null!;
 }

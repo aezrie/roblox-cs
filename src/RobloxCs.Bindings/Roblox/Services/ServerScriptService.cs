@@ -1,5 +1,10 @@
 using System;
-using Roblox.Instances;
+using Roblox;
+
 namespace Roblox.Services;
+
 [RobloxService]
-public class ServerScriptService : Instance { }
+public class ServerScriptService : Instance
+{
+    // (no scriptable members)
+}

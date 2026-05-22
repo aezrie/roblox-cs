@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "K+BtiEuFyYk=",
+  "success": true,
+  "projectFilePath": "/home/aero/Projects/c#/roblox-cs/src/RobloxCs.Bindings/tools/RobloxCs.Bindings.tools.csproj",
+  "expectedPackageFiles": [
+    "/home/aero/.nuget/packages/microsoft.aspnetcore.app.ref/9.0.14/microsoft.aspnetcore.app.ref.9.0.14.nupkg.sha512"
+  ],
+  "logs": []
+}

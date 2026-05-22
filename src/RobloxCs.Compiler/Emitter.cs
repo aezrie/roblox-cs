@@ -413,6 +413,12 @@ public class Emitter : CSharpSyntaxWalker
                 new[] { new LuaLiteralExpression($"\"{serviceType?.Name}\"") });
         }
 
+        // Game.Workspace -> workspace
+        if (symbol?.Name == "Workspace" && (symbol.ContainingType?.Name == "Game" || symbol.ContainingType?.ToDisplayString() == "Roblox.Game"))
+        {
+            return new LuaIdentifierExpression("workspace");
+        }
+
         var target = VisitExpression(node.Expression);
         var arguments = node.ArgumentList.Arguments
             .Select(a => VisitExpression(a.Expression)).ToArray();
@@ -548,14 +554,27 @@ public class Emitter : CSharpSyntaxWalker
     }
 
     // new Vector3(1,2,3) -> Vector3.new(1,2,3)
-    // new MyClass() -> MyClass.new()
+    // new Part() -> Instance.new("Part")
     private LuaNode VisitObjectCreation(ObjectCreationExpressionSyntax node)
     {
+        var typeSymbol = _semanticModel.GetTypeInfo(node).Type;
+        if (typeSymbol != null && IsRobloxInstance(typeSymbol))
+        {
+            var args = new List<LuaNode> { new LuaLiteralExpression($"\"{typeSymbol.Name}\"") };
+            if (node.ArgumentList is { Arguments.Count: > 0 } argList)
+            {
+                args.AddRange(argList.Arguments.Select(a => VisitExpression(a.Expression)));
+            }
+            return new LuaInvocationExpression(
+                new LuaMemberAccessExpression(new LuaIdentifierExpression("Instance"), "new", false),
+                args.ToArray());
+        }
+
         var typeName = node.Type.ToString();
         var target = new LuaMemberAccessExpression(new LuaIdentifierExpression(typeName), "new", false);
-        var args = (node.ArgumentList?.Arguments ?? default)
+        var creationArgs = (node.ArgumentList?.Arguments ?? default)
             .Select(a => VisitExpression(a.Expression)).ToArray();
-        return new LuaInvocationExpression(target, args);
+        return new LuaInvocationExpression(target, creationArgs);
     }
 
     private LuaNode VisitLiteral(LiteralExpressionSyntax node)
@@ -604,6 +623,14 @@ public class Emitter : CSharpSyntaxWalker
 
     private LuaNode VisitMemberAccess(MemberAccessExpressionSyntax node)
     {
+        var symbol = _semanticModel.GetSymbolInfo(node).Symbol;
+
+        // Game.Workspace -> workspace
+        if (symbol?.Name == "Workspace" && (symbol.ContainingType?.Name == "Game" || symbol.ContainingType?.ToDisplayString() == "Roblox.Game"))
+        {
+            return new LuaIdentifierExpression("workspace");
+        }
+
         var expression = VisitExpression(node.Expression);
         var receiverType = _semanticModel.GetTypeInfo(node.Expression).Type;
         var memberSymbol = _semanticModel.GetSymbolInfo(node).Symbol;
