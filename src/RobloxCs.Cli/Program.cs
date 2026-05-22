@@ -20,7 +20,9 @@ if (args.Length == 0)
 
 string inputArg = args[0];
 
-// ── Directory mode ──────────────────────────────────────────────────────────
+// ── Setup input files ───────────────────────────────────────────────────────
+var filesToCompile = new List<(string InputPath, string OutputPath)>();
+
 if (Directory.Exists(inputArg))
 {
     var csFiles = Directory.GetFiles(inputArg, "*.cs", SearchOption.AllDirectories);
@@ -31,24 +33,20 @@ if (Directory.Exists(inputArg))
         Console.ResetColor();
         return 0;
     }
-
-    int ok = 0, fail = 0;
     foreach (var csFile in csFiles)
     {
-        var outFile = Path.ChangeExtension(csFile, ".lua");
-        int result = CompileFile(csFile, outFile);
-        if (result == 0) ok++; else fail++;
+        filesToCompile.Add((csFile, Path.ChangeExtension(csFile, ".lua")));
     }
-
-    Console.WriteLine();
-    Console.ForegroundColor = fail == 0 ? ConsoleColor.Green : ConsoleColor.Red;
-    Console.WriteLine($"[roblox-cs] Done — {ok} succeeded, {fail} failed.");
-    Console.ResetColor();
-    return fail > 0 ? 1 : 0;
 }
-
-// ── Single-file mode ────────────────────────────────────────────────────────
-if (!File.Exists(inputArg))
+else if (File.Exists(inputArg))
+{
+    int oFlag = Array.IndexOf(args, "-o");
+    string singleOut = oFlag >= 0 && oFlag + 1 < args.Length
+        ? args[oFlag + 1]
+        : Path.ChangeExtension(Path.GetFullPath(inputArg), ".lua");
+    filesToCompile.Add((inputArg, singleOut));
+}
+else
 {
     Console.ForegroundColor = ConsoleColor.Red;
     Console.WriteLine($"❌ File or directory not found: {inputArg}");
@@ -56,29 +54,13 @@ if (!File.Exists(inputArg))
     return 1;
 }
 
-int oFlag = Array.IndexOf(args, "-o");
-string singleOut = oFlag >= 0 && oFlag + 1 < args.Length
-    ? args[oFlag + 1]
-    : Path.ChangeExtension(Path.GetFullPath(inputArg), ".lua");
-
-return CompileFile(inputArg, singleOut);
-
-// ── Shared compile helper ───────────────────────────────────────────────────
-int CompileFile(string inputPath, string outputPath)
-{
-
-// ── Read source ─────────────────────────────────────────────────────────────
-string userCode = File.ReadAllText(inputPath);
-
 // ── Setup Roslyn references ─────────────────────────────────────────────────
 var references = new List<MetadataReference>();
 
-// Load ALL core .NET runtime DLLs (Console, Runtime, Collections, etc.)
 var runtimeDir = RuntimeEnvironment.GetRuntimeDirectory();
 foreach (var dll in Directory.GetFiles(runtimeDir, "*.dll"))
     references.Add(MetadataReference.CreateFromFile(dll));
 
-// Load our custom Bindings assembly
 var bindingsPath = typeof(Roblox.Services.Players).Assembly.Location;
 if (!string.IsNullOrEmpty(bindingsPath) && File.Exists(bindingsPath))
 {
@@ -92,21 +74,33 @@ else
     return 1;
 }
 
-// ── Roslyn Compilation ──────────────────────────────────────────────────────
-var syntaxTree = CSharpSyntaxTree.ParseText(userCode);
-bool hasTopLevelStatements = syntaxTree.GetRoot()
-    .DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.GlobalStatementSyntax>().Any();
-var outputKind = hasTopLevelStatements
+// ── Read and Parse all files ────────────────────────────────────────────────
+var syntaxTrees = new List<SyntaxTree>();
+bool hasAnyTopLevelStatements = false;
+
+foreach (var file in filesToCompile)
+{
+    string userCode = File.ReadAllText(file.InputPath);
+    var syntaxTree = CSharpSyntaxTree.ParseText(userCode, path: file.InputPath);
+    syntaxTrees.Add(syntaxTree);
+
+    if (syntaxTree.GetRoot().DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.GlobalStatementSyntax>().Any())
+    {
+        hasAnyTopLevelStatements = true;
+    }
+}
+
+var outputKind = hasAnyTopLevelStatements
     ? OutputKind.ConsoleApplication
     : OutputKind.DynamicallyLinkedLibrary;
 
+// ── Roslyn Compilation ──────────────────────────────────────────────────────
 var compilation = CSharpCompilation.Create(
     "RobloxCsUserProject",
-    syntaxTrees: new[] { syntaxTree },
+    syntaxTrees: syntaxTrees,
     references: references,
     options: new CSharpCompilationOptions(outputKind)
 );
-
 
 // Check for C# compilation errors
 var diagnostics = compilation.GetDiagnostics()
@@ -118,33 +112,62 @@ if (diagnostics.Any())
     Console.ForegroundColor = ConsoleColor.Red;
     Console.WriteLine("❌ C# Compilation Errors:");
     foreach (var diag in diagnostics)
-        Console.WriteLine($"  {diag}");
+    {
+        var lineSpan = diag.Location.GetLineSpan();
+        var fileName = Path.GetFileName(lineSpan.Path);
+        Console.WriteLine($"  [{fileName}] {diag}");
+    }
     Console.ResetColor();
     return 1;
 }
 
-// ── Emit ────────────────────────────────────────────────────────────────────
-var tree = compilation.SyntaxTrees.First();
-var semanticModel = compilation.GetSemanticModel(tree);
+// ── Emit & Render ───────────────────────────────────────────────────────────
+int ok = 0, fail = 0;
 
-var emitter = new Emitter(semanticModel);
-var luauAst = emitter.Emit();
+for (int i = 0; i < syntaxTrees.Count; i++)
+{
+    var tree = syntaxTrees[i];
+    var outFile = filesToCompile[i].OutputPath;
 
-// ── Render ──────────────────────────────────────────────────────────────────
-var renderer = new Renderer();
-string luauOutput = renderer.Render(luauAst);
+    try
+    {
+        var semanticModel = compilation.GetSemanticModel(tree);
+        var emitter = new Emitter(semanticModel);
+        var luauAst = emitter.Emit();
 
-// ── Write output ─────────────────────────────────────────────────────────────
-Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
-File.WriteAllText(outputPath, luauOutput);
+        var renderer = new Renderer();
+        string luauOutput = renderer.Render(luauAst);
 
-Console.ForegroundColor = ConsoleColor.Green;
-Console.WriteLine($"[roblox-cs] ✅ Written: {outputPath}");
-Console.ResetColor();
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outFile))!);
+        File.WriteAllText(outFile, luauOutput);
 
-Console.WriteLine();
-Console.WriteLine("--- Generated Luau ---");
-Console.WriteLine(luauOutput);
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine($"[roblox-cs] ✅ Written: {outFile}");
+        Console.ResetColor();
+        ok++;
+        
+        if (filesToCompile.Count == 1)
+        {
+            Console.WriteLine();
+            Console.WriteLine("--- Generated Luau ---");
+            Console.WriteLine(luauOutput);
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"[roblox-cs] ❌ Failed to compile {filesToCompile[i].InputPath}:\n{ex}");
+        Console.ResetColor();
+        fail++;
+    }
+}
 
-return 0;
-} // end CompileFile
+if (filesToCompile.Count > 1)
+{
+    Console.WriteLine();
+    Console.ForegroundColor = fail == 0 ? ConsoleColor.Green : ConsoleColor.Red;
+    Console.WriteLine($"[roblox-cs] Done — {ok} succeeded, {fail} failed.");
+    Console.ResetColor();
+}
+
+return fail > 0 ? 1 : 0;

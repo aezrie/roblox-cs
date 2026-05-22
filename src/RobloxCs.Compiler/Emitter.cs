@@ -13,6 +13,7 @@ public class Emitter : CSharpSyntaxWalker
     // Maps local service var name -> Roblox service type name (top-level only)
     // e.g. "players" -> "Players" so usages become game.Players
     private readonly Dictionary<string, string> _serviceVariables = new();
+    private readonly HashSet<ITypeSymbol> _requiredTypes = new(SymbolEqualityComparer.Default);
 
     // Class context — set while visiting a class declaration
     private string? _currentClassName = null;
@@ -39,7 +40,19 @@ public class Emitter : CSharpSyntaxWalker
         _scopeStack.Push(new List<LuaNode>());
         var root = _semanticModel.SyntaxTree.GetRoot();
         Visit(root);
-        return new LuaBlockStatement(_scopeStack.Pop());
+
+        var statements = _scopeStack.Pop();
+
+        // Inject requires at the top
+        var requires = new List<LuaNode>();
+        foreach (var reqType in _requiredTypes)
+        {
+            var reqNode = GenerateRequireNode(reqType);
+            requires.Add(new LuaLocalDeclarationStatement(reqType.Name, reqNode));
+        }
+
+        requires.AddRange(statements);
+        return new LuaBlockStatement(requires);
     }
 
     // ── Type helpers ────────────────────────────────────────────────────────
@@ -63,6 +76,60 @@ public class Emitter : CSharpSyntaxWalker
 
     private bool ShouldUseColon(ITypeSymbol? receiverType) =>
         IsRobloxInstance(receiverType) || IsCurrentClassType(receiverType);
+
+    private void RegisterDependency(ITypeSymbol? type)
+    {
+        if (type == null) return;
+        if (type.ContainingNamespace?.ToDisplayString().StartsWith("System") == true) return;
+        if (type.ContainingNamespace?.ToDisplayString().StartsWith("Roblox") == true) return;
+        if (type.Name == _currentClassName) return;
+        if (type.ContainingNamespace == null || type.ContainingNamespace.IsGlobalNamespace) return;
+
+        _requiredTypes.Add(type);
+    }
+
+    private LuaNode GenerateRequireNode(ITypeSymbol type)
+    {
+        var ns = type.ContainingNamespace.ToDisplayString();
+        var parts = ns.Split('.');
+
+        LuaNode rootNode;
+        int startIndex = 1;
+
+        if (parts[0] == "Server")
+        {
+            rootNode = new LuaInvocationExpression(
+                new LuaMemberAccessExpression(new LuaIdentifierExpression("game"), "GetService", true),
+                new[] { new LuaLiteralExpression("\"ServerScriptService\"") });
+        }
+        else if (parts[0] == "Client")
+        {
+            var starterPlayer = new LuaInvocationExpression(
+                new LuaMemberAccessExpression(new LuaIdentifierExpression("game"), "GetService", true),
+                new[] { new LuaLiteralExpression("\"StarterPlayer\"") });
+            rootNode = new LuaMemberAccessExpression(starterPlayer, "StarterPlayerScripts", false);
+        }
+        else if (parts[0] == "Shared")
+        {
+            rootNode = new LuaInvocationExpression(
+                new LuaMemberAccessExpression(new LuaIdentifierExpression("game"), "GetService", true),
+                new[] { new LuaLiteralExpression("\"ReplicatedStorage\"") });
+        }
+        else
+        {
+            rootNode = new LuaIdentifierExpression("script");
+            startIndex = 0;
+        }
+
+        LuaNode current = rootNode;
+        for (int i = startIndex; i < parts.Length; i++)
+        {
+            current = new LuaMemberAccessExpression(current, parts[i], false);
+        }
+
+        current = new LuaMemberAccessExpression(current, type.Name, false);
+        return new LuaInvocationExpression(new LuaIdentifierExpression("require"), new[] { current });
+    }
 
     // ── Statement visitors ──────────────────────────────────────────────────
 
@@ -506,6 +573,16 @@ public class Emitter : CSharpSyntaxWalker
     private LuaNode VisitIdentifier(IdentifierNameSyntax node)
     {
         var name = node.Identifier.Text;
+        var symbol = _semanticModel.GetSymbolInfo(node).Symbol;
+
+        if (symbol is INamedTypeSymbol namedType)
+        {
+            RegisterDependency(namedType);
+        }
+        else if (symbol is IMethodSymbol methodSymbol && methodSymbol.IsStatic)
+        {
+            RegisterDependency(methodSymbol.ContainingType);
+        }
 
         // Service variable inlining (top-level only, not inside classes)
         if (_currentClassName == null && _serviceVariables.TryGetValue(name, out var serviceName))
@@ -514,7 +591,6 @@ public class Emitter : CSharpSyntaxWalker
         // Inside instance method: implicit field/property/method access -> self.name or self:name
         if (_inInstanceMethod)
         {
-            var symbol = _semanticModel.GetSymbolInfo(node).Symbol;
             if ((symbol?.Kind == SymbolKind.Field || symbol?.Kind == SymbolKind.Property || symbol?.Kind == SymbolKind.Method) &&
                 symbol.ContainingType?.Name == _currentClassName)
             {
