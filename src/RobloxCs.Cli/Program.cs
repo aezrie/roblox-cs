@@ -11,36 +11,61 @@ if (args.Length == 0)
     Console.WriteLine("roblox-cs — C# to Luau transpiler");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  roblox-cs <input.cs>              Compile and write <input.lua> next to input");
-    Console.WriteLine("  roblox-cs <input.cs> -o <out.lua> Compile and write to specified output path");
+    Console.WriteLine("  roblox-cs <input.cs>              Compile one file, write <input.lua> next to it");
+    Console.WriteLine("  roblox-cs <input.cs> -o <out.lua> Compile one file to a specific output");
+    Console.WriteLine("  roblox-cs <directory/>            Compile every .cs file in the directory");
     Console.ResetColor();
     return 1;
 }
 
-string inputPath = args[0];
-if (!File.Exists(inputPath))
+string inputArg = args[0];
+
+// ── Directory mode ──────────────────────────────────────────────────────────
+if (Directory.Exists(inputArg))
+{
+    var csFiles = Directory.GetFiles(inputArg, "*.cs", SearchOption.AllDirectories);
+    if (csFiles.Length == 0)
+    {
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine($"[roblox-cs] No .cs files found in: {inputArg}");
+        Console.ResetColor();
+        return 0;
+    }
+
+    int ok = 0, fail = 0;
+    foreach (var csFile in csFiles)
+    {
+        var outFile = Path.ChangeExtension(csFile, ".lua");
+        int result = CompileFile(csFile, outFile);
+        if (result == 0) ok++; else fail++;
+    }
+
+    Console.WriteLine();
+    Console.ForegroundColor = fail == 0 ? ConsoleColor.Green : ConsoleColor.Red;
+    Console.WriteLine($"[roblox-cs] Done — {ok} succeeded, {fail} failed.");
+    Console.ResetColor();
+    return fail > 0 ? 1 : 0;
+}
+
+// ── Single-file mode ────────────────────────────────────────────────────────
+if (!File.Exists(inputArg))
 {
     Console.ForegroundColor = ConsoleColor.Red;
-    Console.WriteLine($"❌ File not found: {inputPath}");
+    Console.WriteLine($"❌ File or directory not found: {inputArg}");
     Console.ResetColor();
     return 1;
 }
 
-// Determine output path
-string outputPath;
 int oFlag = Array.IndexOf(args, "-o");
-if (oFlag >= 0 && oFlag + 1 < args.Length)
-{
-    outputPath = args[oFlag + 1];
-}
-else
-{
-    outputPath = Path.ChangeExtension(Path.GetFullPath(inputPath), ".lua");
-}
+string singleOut = oFlag >= 0 && oFlag + 1 < args.Length
+    ? args[oFlag + 1]
+    : Path.ChangeExtension(Path.GetFullPath(inputArg), ".lua");
 
-Console.ForegroundColor = ConsoleColor.Cyan;
-Console.WriteLine($"[roblox-cs] Compiling: {Path.GetFullPath(inputPath)}");
-Console.ResetColor();
+return CompileFile(inputArg, singleOut);
+
+// ── Shared compile helper ───────────────────────────────────────────────────
+int CompileFile(string inputPath, string outputPath)
+{
 
 // ── Read source ─────────────────────────────────────────────────────────────
 string userCode = File.ReadAllText(inputPath);
@@ -68,12 +93,20 @@ else
 }
 
 // ── Roslyn Compilation ──────────────────────────────────────────────────────
+var syntaxTree = CSharpSyntaxTree.ParseText(userCode);
+bool hasTopLevelStatements = syntaxTree.GetRoot()
+    .DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.GlobalStatementSyntax>().Any();
+var outputKind = hasTopLevelStatements
+    ? OutputKind.ConsoleApplication
+    : OutputKind.DynamicallyLinkedLibrary;
+
 var compilation = CSharpCompilation.Create(
     "RobloxCsUserProject",
-    syntaxTrees: new[] { CSharpSyntaxTree.ParseText(userCode) },
+    syntaxTrees: new[] { syntaxTree },
     references: references,
-    options: new CSharpCompilationOptions(OutputKind.ConsoleApplication)
+    options: new CSharpCompilationOptions(outputKind)
 );
+
 
 // Check for C# compilation errors
 var diagnostics = compilation.GetDiagnostics()
@@ -109,9 +142,9 @@ Console.ForegroundColor = ConsoleColor.Green;
 Console.WriteLine($"[roblox-cs] ✅ Written: {outputPath}");
 Console.ResetColor();
 
-// Also print to stdout so it's easy to inspect
 Console.WriteLine();
 Console.WriteLine("--- Generated Luau ---");
 Console.WriteLine(luauOutput);
 
 return 0;
+} // end CompileFile

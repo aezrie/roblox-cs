@@ -1,6 +1,4 @@
 // PlayerService.cs — roblox-cs example
-// Demonstrates: GetService, events, lambdas, if/else, foreach, ?., ??
-
 using System;
 using Roblox;
 using Roblox.Services;

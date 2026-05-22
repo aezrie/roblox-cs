@@ -6,6 +6,10 @@ public record LuaBlockStatement(List<LuaNode> Statements) : LuaNode;
 public record LuaReturnStatement(LuaNode? Value) : LuaNode;
 public record LuaAssignmentStatement(LuaNode Target, LuaNode Value) : LuaNode;
 
+// Named function declaration: function Foo:Bar(params) ... end
+// or                          function Foo.Bar(params) ... end
+public record LuaFunctionDeclarationStatement(LuaNode Target, List<string> Parameters, LuaBlockStatement Body) : LuaNode;
+
 public record LuaIfStatement(
     LuaNode Condition,
     LuaBlockStatement Then,
@@ -21,6 +25,7 @@ public record LuaForEachStatement(
 
 public record LuaWhileStatement(LuaNode Condition, LuaBlockStatement Body) : LuaNode;
 public record LuaDoStatement(LuaBlockStatement Body) : LuaNode;
+
 
 public record LuaNumericForStatement(
     string VarName,

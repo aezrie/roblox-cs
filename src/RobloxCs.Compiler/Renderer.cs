@@ -58,7 +58,22 @@ public class Renderer
                 _sb.AppendLine();
                 break;
 
-            // ── if / elseif / else ──────────────────────────────────────────
+            // ── Named function declaration ───────────────────────────────────
+            case LuaFunctionDeclarationStatement funcDecl:
+                WriteIndent();
+                _sb.Append("function ");
+                Visit(funcDecl.Target);
+                _sb.Append("(");
+                _sb.Append(string.Join(", ", funcDecl.Parameters));
+                _sb.AppendLine(")");
+                _indent++;
+                foreach (var s in funcDecl.Body.Statements) Visit(s);
+                _indent--;
+                WriteIndent();
+                _sb.AppendLine("end");
+                break;
+
+
             case LuaIfStatement ifStmt:
                 WriteIndent();
                 _sb.Append("if ");
