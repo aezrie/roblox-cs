@@ -4,77 +4,70 @@ using RobloxCs.Compiler;
 using System.IO;
 using System.Runtime.InteropServices;
 
-// 1. The "User's" Roblox C# Code — Phase 3 test harness
-string userCode = """
-using System;
-using Roblox;
-using Roblox.Services;
-using Roblox.Instances;
-
-Players players = Game.GetService<Players>();
-Console.WriteLine("Server started!");
-
-// Event subscription with if/else inside lambda
-players.PlayerAdded += (Player player) =>
+// ── Argument parsing ────────────────────────────────────────────────────────
+if (args.Length == 0)
 {
-    Console.WriteLine("Player joined!");
-
-    // Null-conditional: player?.Character -> player and player.Character
-    var character = player?.Character;
-
-
-    // Chained null-conditional: player?.Character?.Parent -> (player and player.Character) and player.Character.Parent
-    var parent = player?.Character?.Parent;
-
-    // Null-coalescing: character ?? player -> character or player
-    var target = (Instance?)character ?? player;
-
-    if (player != null)
-    {
-        Console.WriteLine("Player is valid");
-    }
-    else
-    {
-        Console.WriteLine("Player was null somehow");
-    }
-};
-
-// while loop
-int count = 0;
-while (count < 10)
-{
-    count = count + 1;
+    Console.ForegroundColor = ConsoleColor.Yellow;
+    Console.WriteLine("roblox-cs — C# to Luau transpiler");
+    Console.WriteLine();
+    Console.WriteLine("Usage:");
+    Console.WriteLine("  roblox-cs <input.cs>              Compile and write <input.lua> next to input");
+    Console.WriteLine("  roblox-cs <input.cs> -o <out.lua> Compile and write to specified output path");
+    Console.ResetColor();
+    return 1;
 }
 
-// foreach loop
-foreach (var p in players.GetPlayers())
+string inputPath = args[0];
+if (!File.Exists(inputPath))
 {
-    Console.WriteLine(p.Name);
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine($"❌ File not found: {inputPath}");
+    Console.ResetColor();
+    return 1;
 }
-""";
 
+// Determine output path
+string outputPath;
+int oFlag = Array.IndexOf(args, "-o");
+if (oFlag >= 0 && oFlag + 1 < args.Length)
+{
+    outputPath = args[oFlag + 1];
+}
+else
+{
+    outputPath = Path.ChangeExtension(Path.GetFullPath(inputPath), ".lua");
+}
+
+Console.ForegroundColor = ConsoleColor.Cyan;
+Console.WriteLine($"[roblox-cs] Compiling: {Path.GetFullPath(inputPath)}");
+Console.ResetColor();
+
+// ── Read source ─────────────────────────────────────────────────────────────
+string userCode = File.ReadAllText(inputPath);
+
+// ── Setup Roslyn references ─────────────────────────────────────────────────
 var references = new List<MetadataReference>();
 
+// Load ALL core .NET runtime DLLs (Console, Runtime, Collections, etc.)
 var runtimeDir = RuntimeEnvironment.GetRuntimeDirectory();
 foreach (var dll in Directory.GetFiles(runtimeDir, "*.dll"))
-{
     references.Add(MetadataReference.CreateFromFile(dll));
-}
 
-// B. Load our custom Bindings assembly
+// Load our custom Bindings assembly
 var bindingsPath = typeof(Roblox.Services.Players).Assembly.Location;
 if (!string.IsNullOrEmpty(bindingsPath) && File.Exists(bindingsPath))
 {
     references.Add(MetadataReference.CreateFromFile(bindingsPath));
-    Console.WriteLine($"[DEBUG] Loading Bindings from: {bindingsPath}");
 }
 else
 {
+    Console.ForegroundColor = ConsoleColor.Red;
     Console.WriteLine("❌ ERROR: Could not find RobloxCs.Bindings.dll!");
-    return;
+    Console.ResetColor();
+    return 1;
 }
 
-// 3. Create the Roslyn Compilation
+// ── Roslyn Compilation ──────────────────────────────────────────────────────
 var compilation = CSharpCompilation.Create(
     "RobloxCsUserProject",
     syntaxTrees: new[] { CSharpSyntaxTree.ParseText(userCode) },
@@ -82,8 +75,11 @@ var compilation = CSharpCompilation.Create(
     options: new CSharpCompilationOptions(OutputKind.ConsoleApplication)
 );
 
-// 4. Check for C# compilation errors
-var diagnostics = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+// Check for C# compilation errors
+var diagnostics = compilation.GetDiagnostics()
+    .Where(d => d.Severity == DiagnosticSeverity.Error)
+    .ToList();
+
 if (diagnostics.Any())
 {
     Console.ForegroundColor = ConsoleColor.Red;
@@ -91,19 +87,31 @@ if (diagnostics.Any())
     foreach (var diag in diagnostics)
         Console.WriteLine($"  {diag}");
     Console.ResetColor();
-    return;
+    return 1;
 }
 
-// 5. Run our Emitter
+// ── Emit ────────────────────────────────────────────────────────────────────
 var tree = compilation.SyntaxTrees.First();
 var semanticModel = compilation.GetSemanticModel(tree);
 
 var emitter = new Emitter(semanticModel);
 var luauAst = emitter.Emit();
 
-// 6. Render the AST to a Luau string
+// ── Render ──────────────────────────────────────────────────────────────────
 var renderer = new Renderer();
 string luauOutput = renderer.Render(luauAst);
 
-Console.WriteLine("\n--- Generated Luau ---");
+// ── Write output ─────────────────────────────────────────────────────────────
+Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
+File.WriteAllText(outputPath, luauOutput);
+
+Console.ForegroundColor = ConsoleColor.Green;
+Console.WriteLine($"[roblox-cs] ✅ Written: {outputPath}");
+Console.ResetColor();
+
+// Also print to stdout so it's easy to inspect
+Console.WriteLine();
+Console.WriteLine("--- Generated Luau ---");
 Console.WriteLine(luauOutput);
+
+return 0;
