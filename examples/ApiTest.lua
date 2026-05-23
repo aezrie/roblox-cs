@@ -7,7 +7,10 @@ end
 function ApiTest:RunTest()
     local players = game:GetService("Players")
     players.PlayerAdded:Connect(function(player)
-        print("Player joined!")
+        task.spawn(function()
+            print("Player joined!")
+            self:DoSomethingAsync()
+        end)
     end)
     local allPlayers = players:GetPlayers()
     print("Max players: " .. players.MaxPlayers)
@@ -15,5 +18,12 @@ function ApiTest:RunTest()
     part.Name = "TestPart"
     part.Position = Vector3.new(0, 10, 0)
     part.Parent = workspace
+    local name = part and part.Name
+    local nested = part and part.Parent and part.Parent.Name
+    print("Part name: " .. name)
+    self:DoSomethingAsync()
+end
+function ApiTest:DoSomethingAsync()
+    print("Doing something async...")
 end
 return ApiTest

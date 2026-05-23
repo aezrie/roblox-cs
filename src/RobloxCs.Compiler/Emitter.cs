@@ -384,6 +384,7 @@ public class Emitter : CSharpSyntaxWalker
             ParenthesizedExpressionSyntax paren           => VisitExpression(paren.Expression),
             ObjectCreationExpressionSyntax objCreate      => VisitObjectCreation(objCreate),
             ConditionalAccessExpressionSyntax condAccess  => VisitConditionalAccess(condAccess),
+            AwaitExpressionSyntax awaitExpr               => VisitAwait(awaitExpr),
             ThisExpressionSyntax                          => new LuaIdentifierExpression("self"),
             DefaultExpressionSyntax                       => new LuaNilExpression(),
             _ => new LuaLiteralExpression($"--[[UNHANDLED: {node.GetType().Name}]]")
@@ -469,6 +470,7 @@ public class Emitter : CSharpSyntaxWalker
 
     private LuaNode VisitLambda(LambdaExpressionSyntax node)
     {
+        var isAsync = node.AsyncKeyword.IsKind(SyntaxKind.AsyncKeyword);
         var parameters = node switch
         {
             SimpleLambdaExpressionSyntax simple =>
@@ -489,6 +491,17 @@ public class Emitter : CSharpSyntaxWalker
             _ => new LuaBlockStatement(new List<LuaNode>())
         };
 
+        if (isAsync)
+        {
+            var originalBody = body;
+            body = new LuaBlockStatement(new List<LuaNode>
+            {
+                new LuaExpressionStatement(new LuaInvocationExpression(
+                    new LuaMemberAccessExpression(new LuaIdentifierExpression("task"), "spawn", false),
+                    new[] { new LuaFunctionExpression(new List<string>(), originalBody) }))
+            });
+        }
+
         return new LuaFunctionExpression(parameters, body);
     }
 
@@ -496,24 +509,42 @@ public class Emitter : CSharpSyntaxWalker
     // a?.B?.C -> (a and a.B) and a.B.C
     private LuaNode VisitConditionalAccess(ConditionalAccessExpressionSyntax node)
     {
-        var members = new List<string>();
-        ExpressionSyntax root = node;
-        while (root is ConditionalAccessExpressionSyntax ca)
+        var rootLua = VisitExpression(node.Expression);
+        var result = rootLua;
+        var access = rootLua;
+
+        void Process(ExpressionSyntax whenNotNull)
         {
-            if (ca.WhenNotNull is MemberBindingExpressionSyntax binding)
-                members.Insert(0, binding.Name.Identifier.Text);
-            root = ca.Expression;
+            if (whenNotNull is MemberBindingExpressionSyntax m)
+            {
+                var receiverType = _semanticModel.GetTypeInfo(access is LuaMemberAccessExpression ? node.Expression : node.Expression).Type; // simplified
+                var symbol = _semanticModel.GetSymbolInfo(m).Symbol;
+                bool useColon = symbol?.Kind == SymbolKind.Method && ShouldUseColon(symbol.ContainingType);
+
+                access = new LuaMemberAccessExpression(access, m.Name.Identifier.Text, useColon);
+                result = new LuaBinaryExpression(result, "and", access);
+            }
+            else if (whenNotNull is ConditionalAccessExpressionSyntax ca)
+            {
+                Process(ca.Expression);
+                Process(ca.WhenNotNull);
+            }
+            else if (whenNotNull is InvocationExpressionSyntax invocation)
+            {
+                var args = invocation.ArgumentList.Arguments.Select(a => VisitExpression(a.Expression)).ToArray();
+                Process(invocation.Expression);
+                access = new LuaInvocationExpression(access, args);
+                // No need to update 'result' here as Process(invocation.Expression) already did it for the member access
+            }
         }
 
-        var baseExpr = VisitExpression(root);
-        LuaNode current = baseExpr;
-        LuaNode result = baseExpr;
-        foreach (var member in members)
-        {
-            current = new LuaMemberAccessExpression(current, member, false);
-            result = new LuaBinaryExpression(result, "and", current);
-        }
+        Process(node.WhenNotNull);
         return result;
+    }
+
+    private LuaNode VisitAwait(AwaitExpressionSyntax node)
+    {
+        return VisitExpression(node.Expression);
     }
 
     private LuaNode VisitBinary(BinaryExpressionSyntax node)
@@ -643,6 +674,7 @@ public class Emitter : CSharpSyntaxWalker
     private ITypeSymbol? ResolveReceiverType(ExpressionSyntax node) => node switch
     {
         MemberAccessExpressionSyntax m => _semanticModel.GetTypeInfo(m.Expression).Type,
+        IdentifierNameSyntax id => _semanticModel.GetSymbolInfo(id).Symbol?.ContainingType,
         _ => null
     };
 
