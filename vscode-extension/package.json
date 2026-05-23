@@ -11,19 +11,33 @@
     "Programming Languages"
   ],
   "main": "./dist/extension.js",
+  "extensionDependencies": [
+    "ms-dotnettools.csharp"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "csharp",
         "extensions": [
           ".cs"
-        ],
-        "aliases": [
-          "C#",
-          "csharp"
         ]
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Roblox-CS",
+      "properties": {
+        "roblox-cs.transpileOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically transpile C# files to Luau on save."
+        },
+        "roblox-cs.compilerPath": {
+          "type": "string",
+          "default": "dotnet run --project ${workspaceFolder}/src/RobloxCs.Cli/RobloxCs.Cli.csproj",
+          "description": "Path or command to run the roblox-cs compiler."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
