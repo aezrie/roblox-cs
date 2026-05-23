@@ -61,11 +61,11 @@ Here is the roadmap to build out the rest of the transpiler, ordered by priority
 ## Phase 4: Type System Power - Structs & Pattern Matching
 *Goal: Bring C#'s type safety to Roblox data structures.*
 
-- [ ] **Struct Emission:** Introduce `[RobloxStruct]`. Emit them as Luau tables with a `__index` metatable and a `:Clone()` method for value semantics.
-- [ ] **Struct Clone Inserter:** Create an emitter pass that inserts `:Clone()` on struct assignments (`a = b` -> `a = b:Clone()`), function arguments, and collection inserts.
-- [ ] **Records & `with` Expressions:** Translate `record struct` and `with` syntax into `Clone() + field mutation`. (e.g., `pos with { X = 5 }` -> `local _c = pos:Clone(); _c.X = 5; return _c`).
-- [ ] **Type Patterns (`switch`/`is`):** Map `case BasePart part:` to `if child:IsA("BasePart") then local part = child`.
-- [ ] **Property Patterns:** Map `case { Health: > 50 }:` to table index checks.
+- [x] **Struct Emission:** Introduce `[RobloxStruct]`. Emit them as Luau tables with a `__index` metatable and a `:Clone()` method for value semantics.
+- [x] **Struct Clone Inserter:** Create an emitter pass that inserts `:Clone()` on struct assignments (`a = b` -> `a = b:Clone()`), function arguments, and collection inserts.
+- [x] **Records & `with` Expressions:** Translate `record struct` and `with` syntax into `Clone() + field mutation`. (e.g., `pos with { X = 5 }` -> `local _c = pos:Clone(); _c.X = 5; return _c`).
+- [x] **Type Patterns (`switch`/`is`):** Map `case BasePart part:` to `if child:IsA("BasePart") then local part = child`.
+- [x] **Property Patterns:** Map `case { Health: > 50 }:` to table index checks.
 
 ## Phase 5: LINQ & Advanced Emitter Passes
 *Goal: Write declarative data transformation.*

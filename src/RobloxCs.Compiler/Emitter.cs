@@ -17,7 +17,10 @@ public class Emitter : CSharpSyntaxWalker
 
     // Class context — set while visiting a class declaration
     private string? _currentClassName = null;
+    private string? _lastDeclaredClassName = null;
     private bool _inInstanceMethod = false;
+
+    private readonly List<(string Name, LuaNode Value)> _pendingDeclarations = new();
 
     private List<LuaNode> CurrentScope => _scopeStack.Peek();
 
@@ -42,6 +45,12 @@ public class Emitter : CSharpSyntaxWalker
         Visit(root);
 
         var statements = _scopeStack.Pop();
+
+        // Add return for the last declared class/struct if any
+        if (_lastDeclaredClassName != null)
+        {
+            statements.Add(new LuaReturnStatement(new LuaIdentifierExpression(_lastDeclaredClassName)));
+        }
 
         // Inject requires at the top
         var requires = new List<LuaNode>();
@@ -68,6 +77,28 @@ public class Emitter : CSharpSyntaxWalker
             current = current.BaseType;
         }
         return false;
+    }
+
+    private bool IsRobloxStruct(ITypeSymbol? type)
+    {
+        if (type == null) return false;
+        return type.TypeKind == TypeKind.Struct || type.GetAttributes().Any(a => a.AttributeClass?.Name == "RobloxStructAttribute");
+    }
+
+    private LuaNode WrapCloneIfStruct(ExpressionSyntax node, LuaNode luaNode)
+    {
+        var type = _semanticModel.GetTypeInfo(node).Type;
+        if (IsRobloxStruct(type))
+        {
+            // Don't clone literals, new expressions, or with expressions (they are already new/cloned)
+            if (node is ObjectCreationExpressionSyntax || node is LiteralExpressionSyntax || node is WithExpressionSyntax)
+                return luaNode;
+
+            return new LuaInvocationExpression(
+                new LuaMemberAccessExpression(luaNode, "Clone", true),
+                new LuaNode[] { });
+        }
+        return luaNode;
     }
 
     // Instance methods on user-defined classes should also use colon
@@ -165,7 +196,7 @@ public class Emitter : CSharpSyntaxWalker
             }
 
             LuaNode? initializer = variable.Initializer != null
-                ? VisitExpression(variable.Initializer.Value)
+                ? WrapCloneIfStruct(variable.Initializer.Value, VisitExpression(variable.Initializer.Value))
                 : null;
             EmitStatement(new LuaLocalDeclarationStatement(name, initializer));
         }
@@ -187,7 +218,16 @@ public class Emitter : CSharpSyntaxWalker
     public override void VisitIfStatement(IfStatementSyntax node)
     {
         var condition = VisitExpression(node.Condition);
-        var thenBlock = CaptureBlock(() => Visit(node.Statement));
+        var thenBlock = CaptureBlock(() =>
+        {
+            foreach (var (name, value) in _pendingDeclarations)
+            {
+                EmitStatement(new LuaLocalDeclarationStatement(name, value));
+            }
+            _pendingDeclarations.Clear();
+
+            Visit(node.Statement);
+        });
 
         var elseIfs = new List<(LuaNode Condition, LuaBlockStatement Body)>();
         LuaBlockStatement? elseBlock = null;
@@ -220,11 +260,103 @@ public class Emitter : CSharpSyntaxWalker
 
     // ── Class / Method visitors ─────────────────────────────────────────────
 
-    public override void VisitClassDeclaration(ClassDeclarationSyntax node)
+    public override void VisitSwitchStatement(SwitchStatementSyntax node)
     {
+        var expression = VisitExpression(node.Expression);
+        
+        // We emit switch as a series of if/elseif in Luau
+        LuaNode? firstCondition = null;
+        LuaBlockStatement? firstBody = null;
+        var elseIfs = new List<(LuaNode Condition, LuaBlockStatement Body)>();
+        LuaBlockStatement? elseBlock = null;
+
+        foreach (var section in node.Sections)
+        {
+            foreach (var label in section.Labels)
+            {
+                LuaNode? condition = null;
+                if (label is CaseSwitchLabelSyntax caseLabel)
+                {
+                    condition = new LuaBinaryExpression(expression, "==", VisitExpression(caseLabel.Value));
+                }
+                else if (label is CasePatternSwitchLabelSyntax patternLabel)
+                {
+                    if (patternLabel.Pattern is DeclarationPatternSyntax decl)
+                    {
+                        var typeSymbol = _semanticModel.GetTypeInfo(decl.Type).Type;
+                        if (IsRobloxInstance(typeSymbol))
+                        {
+                            condition = new LuaInvocationExpression(
+                                new LuaMemberAccessExpression(expression, "IsA", true),
+                                new[] { new LuaLiteralExpression($"\"{typeSymbol.Name}\"") });
+                            
+                            if (decl.Designation is SingleVariableDesignationSyntax varDecl)
+                            {
+                                // We'll handle this by injecting the declaration into the section body
+                                // This is a bit simplified; real C# switch has complex scoping
+                            }
+                        }
+                    }
+                }
+
+                if (condition != null)
+                {
+                    var body = CaptureBlock(() =>
+                    {
+                        // Inject declarations if it was a pattern
+                        if (label is CasePatternSwitchLabelSyntax pl && pl.Pattern is DeclarationPatternSyntax d && d.Designation is SingleVariableDesignationSyntax v)
+                        {
+                            EmitStatement(new LuaLocalDeclarationStatement(v.Identifier.Text, expression));
+                        }
+
+                        foreach (var stmt in section.Statements)
+                        {
+                            if (stmt is BreakStatementSyntax) continue;
+                            Visit(stmt);
+                        }
+                    });
+
+                    if (firstCondition == null)
+                    {
+                        firstCondition = condition;
+                        firstBody = body;
+                    }
+                    else
+                    {
+                        elseIfs.Add((condition, body));
+                    }
+                }
+                else if (label is DefaultSwitchLabelSyntax)
+                {
+                    elseBlock = CaptureBlock(() =>
+                    {
+                        foreach (var stmt in section.Statements)
+                        {
+                            if (stmt is BreakStatementSyntax) continue;
+                            Visit(stmt);
+                        }
+                    });
+                }
+            }
+        }
+
+        if (firstCondition != null && firstBody != null)
+        {
+            EmitStatement(new LuaIfStatement(firstCondition, firstBody, elseIfs, elseBlock));
+        }
+    }
+
+    public override void VisitClassDeclaration(ClassDeclarationSyntax node) => VisitTypeDeclaration(node);
+    public override void VisitStructDeclaration(StructDeclarationSyntax node) => VisitTypeDeclaration(node);
+
+    private void VisitTypeDeclaration(TypeDeclarationSyntax node)
+    {
+        var symbol = _semanticModel.GetDeclaredSymbol(node);
         var className = node.Identifier.Text;
         _currentClassName = className;
+        _lastDeclaredClassName = className;
         bool isStatic = node.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword));
+        bool isStruct = node.Kind() == SyntaxKind.StructDeclaration || IsRobloxStruct(symbol);
 
         // local ClassName = {}
         EmitStatement(new LuaLocalDeclarationStatement(className,
@@ -236,6 +368,27 @@ public class Emitter : CSharpSyntaxWalker
             EmitStatement(new LuaAssignmentStatement(
                 new LuaMemberAccessExpression(new LuaIdentifierExpression(className), "__index", false),
                 new LuaIdentifierExpression(className)));
+
+            if (isStruct)
+            {
+                // function ClassName:Clone() return setmetatable(table.clone(self), ClassName) end
+                var cloneBody = CaptureBlock(() =>
+                {
+                    EmitStatement(new LuaReturnStatement(
+                        new LuaInvocationExpression(
+                            new LuaIdentifierExpression("setmetatable"),
+                            new LuaNode[]
+                            {
+                                new LuaInvocationExpression(
+                                    new LuaMemberAccessExpression(new LuaIdentifierExpression("table"), "clone", false),
+                                    new[] { new LuaIdentifierExpression("self") }),
+                                new LuaIdentifierExpression(className)
+                            })));
+                });
+                EmitStatement(new LuaFunctionDeclarationStatement(
+                    new LuaMemberAccessExpression(new LuaIdentifierExpression(className), "Clone", true),
+                    new List<string>(), cloneBody));
+            }
 
             bool hasConstructor = node.Members.OfType<ConstructorDeclarationSyntax>().Any();
             if (!hasConstructor)
@@ -267,13 +420,10 @@ public class Emitter : CSharpSyntaxWalker
         foreach (var member in node.Members)
             Visit(member);
 
-        // return ClassName
-        EmitStatement(new LuaReturnStatement(new LuaIdentifierExpression(className)));
-
         _currentClassName = null;
     }
 
-    private void EmitFieldInitializers(ClassDeclarationSyntax classNode)
+    private void EmitFieldInitializers(TypeDeclarationSyntax classNode)
     {
         foreach (var member in classNode.Members)
         {
@@ -385,6 +535,9 @@ public class Emitter : CSharpSyntaxWalker
             ObjectCreationExpressionSyntax objCreate      => VisitObjectCreation(objCreate),
             ConditionalAccessExpressionSyntax condAccess  => VisitConditionalAccess(condAccess),
             AwaitExpressionSyntax awaitExpr               => VisitAwait(awaitExpr),
+            IsPatternExpressionSyntax isPattern           => VisitIsPattern(isPattern),
+            WithExpressionSyntax withExpr                 => VisitWith(withExpr),
+            InterpolatedStringExpressionSyntax interpolated => VisitInterpolatedString(interpolated),
             ThisExpressionSyntax                          => new LuaIdentifierExpression("self"),
             DefaultExpressionSyntax                       => new LuaNilExpression(),
             _ => new LuaLiteralExpression($"--[[UNHANDLED: {node.GetType().Name}]]")
@@ -401,7 +554,7 @@ public class Emitter : CSharpSyntaxWalker
             (symbol.Name == "WriteLine" || symbol.Name == "Write"))
         {
             var args = node.ArgumentList.Arguments
-                .Select(a => VisitExpression(a.Expression)).ToArray();
+                .Select(a => WrapCloneIfStruct(a.Expression, VisitExpression(a.Expression))).ToArray();
             return new LuaInvocationExpression(new LuaIdentifierExpression("print"), args);
         }
 
@@ -423,7 +576,7 @@ public class Emitter : CSharpSyntaxWalker
         // Task.WhenAll(t1, t2) -> (custom barrier implementation)
         if (symbol?.Name == "WhenAll" && symbol.ContainingType?.Name == "Task" && symbol.ContainingType.ContainingNamespace?.ToDisplayString() == "System.Threading.Tasks")
         {
-            var taskList = node.ArgumentList.Arguments.Select(a => VisitExpression(a.Expression)).ToList();
+            var taskList = node.ArgumentList.Arguments.Select(a => WrapCloneIfStruct(a.Expression, VisitExpression(a.Expression))).ToList();
             
             // For Phase 3, we simply emit the expressions sequentially for now to maintain the yielding flow.
             // This is valid in Luau for yielding functions when wrapped in a block.
@@ -432,7 +585,7 @@ public class Emitter : CSharpSyntaxWalker
 
         var target = VisitExpression(node.Expression);
         var arguments = node.ArgumentList.Arguments
-            .Select(a => VisitExpression(a.Expression)).ToArray();
+            .Select(a => WrapCloneIfStruct(a.Expression, VisitExpression(a.Expression))).ToArray();
 
         // If this is a Task.WhenAll call that was handled above, it won't reach here 
         // because we return a LuaBlockStatement. 
@@ -447,6 +600,71 @@ public class Emitter : CSharpSyntaxWalker
         }
 
         return new LuaInvocationExpression(target, arguments);
+    }
+
+    private LuaNode VisitIsPattern(IsPatternExpressionSyntax node)
+    {
+        var expression = VisitExpression(node.Expression);
+        if (node.Pattern is DeclarationPatternSyntax decl)
+        {
+            var typeSymbol = _semanticModel.GetTypeInfo(decl.Type).Type;
+            if (IsRobloxInstance(typeSymbol))
+            { 
+                if (decl.Designation is SingleVariableDesignationSyntax varDecl)
+                {
+                    _pendingDeclarations.Add((varDecl.Identifier.Text, expression));
+                }
+
+                return new LuaInvocationExpression(
+                    new LuaMemberAccessExpression(expression, "IsA", true),
+                    new[] { new LuaLiteralExpression($"\"{typeSymbol.Name}\"") });
+            }
+        }
+        return new LuaLiteralExpression($"--[[UNHANDLED Pattern: {node.Pattern.GetType().Name}]]");
+    }
+
+    private LuaNode VisitWith(WithExpressionSyntax node)
+    {
+        var expression = VisitExpression(node.Expression);
+
+        return new LuaInvocationExpression(
+            new LuaFunctionExpression(new List<string> { "_c" }, CaptureBlock(() =>
+            {
+                foreach (var initializer in node.Initializer.Expressions)
+                {
+                    if (initializer is AssignmentExpressionSyntax assignment)
+                    {
+                        var right = VisitExpression(assignment.Right);
+                        EmitStatement(new LuaAssignmentStatement(
+                            new LuaMemberAccessExpression(new LuaIdentifierExpression("_c"), assignment.Left.ToString(), false),
+                            right));
+                    }
+                }
+                EmitStatement(new LuaReturnStatement(new LuaIdentifierExpression("_c")));
+            })),
+            new[] { new LuaInvocationExpression(new LuaMemberAccessExpression(expression, "Clone", true), new LuaNode[] { }) });
+    }
+
+    private LuaNode VisitInterpolatedString(InterpolatedStringExpressionSyntax node)
+    {
+        var format = "";
+        var args = new List<LuaNode>();
+        foreach (var content in node.Contents)
+        {
+            if (content is InterpolatedStringTextSyntax text)
+            {
+                format += text.TextToken.ValueText;
+            }
+            else if (content is InterpolationSyntax interp)
+            {
+                format += "%s";
+                args.Add(VisitExpression(interp.Expression));
+            }
+        }
+        
+        return new LuaInvocationExpression(
+            new LuaMemberAccessExpression(new LuaIdentifierExpression("string"), "format", false),
+            new[] { new LuaLiteralExpression($"\"{format}\"") }.Concat(args).ToArray());
     }
 
     private LuaNode VisitAssignment(AssignmentExpressionSyntax node)
@@ -479,7 +697,7 @@ public class Emitter : CSharpSyntaxWalker
         }
 
         var left = VisitExpression(node.Left);
-        var right = VisitExpression(node.Right);
+        var right = WrapCloneIfStruct(node.Right, VisitExpression(node.Right));
         return new LuaAssignmentExpression(left, right);
     }
 
