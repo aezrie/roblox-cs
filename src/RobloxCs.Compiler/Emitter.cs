@@ -750,7 +750,7 @@ public class Emitter : CSharpSyntaxWalker
         {
             if (whenNotNull is MemberBindingExpressionSyntax m)
             {
-                var receiverType = _semanticModel.GetTypeInfo(access is LuaMemberAccessExpression ? node.Expression : node.Expression).Type; // simplified
+                var receiverType = _semanticModel.GetTypeInfo(node.Expression).Type;
                 var symbol = _semanticModel.GetSymbolInfo(m).Symbol;
                 bool useColon = symbol?.Kind == SymbolKind.Method && ShouldUseColon(symbol.ContainingType);
 
@@ -767,7 +767,10 @@ public class Emitter : CSharpSyntaxWalker
                 var args = invocation.ArgumentList.Arguments.Select(a => VisitExpression(a.Expression)).ToArray();
                 Process(invocation.Expression);
                 access = new LuaInvocationExpression(access, args);
-                // No need to update 'result' here as Process(invocation.Expression) already did it for the member access
+                if (result is LuaBinaryExpression bin)
+                    result = bin with { Right = access };
+                else
+                    result = access;
             }
         }
 
