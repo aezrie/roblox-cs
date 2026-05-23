@@ -35,6 +35,9 @@ public class ApiTest
 
         // Test Async/Await (Stripping)
         await DoSomethingAsync();
+
+        // Test Task.WhenAll
+        await System.Threading.Tasks.Task.WhenAll(DoSomethingAsync(), DoSomethingAsync());
     }
 
     private async System.Threading.Tasks.Task DoSomethingAsync()

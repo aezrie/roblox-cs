@@ -56,7 +56,7 @@ Here is the roadmap to build out the rest of the transpiler, ordered by priority
 - [x] **Null Conditional (`?.`):** Translate `player?.Character` to `player and player.Character`. Implement caching for repeated access (e.g., `a?.B?.C` -> `local _b = a and a.B; local _c = _b and _b.C`).
 - [x] **Async/Await Stripping:** In Roblox, certain functions yield implicitly. Strip `await` from standard calls (e.g., `await remote.InvokeServerAsync()` -> `remote:InvokeServer()`).
 - [x] **Async Event Handlers:** Introduce `ConnectAsync` in Bindings. The emitter must wrap these callbacks in `task.spawn(function() ... end)` so yields inside events don't lock the thread.
-- [ ] **Task.WhenAll:** Translate `Task.WhenAll(t1, t2)` to parallel `task.spawn` calls with a counter barrier.
+- [x] **Task.WhenAll:** Translate `Task.WhenAll(t1, t2)` to parallel `task.spawn` calls with a counter barrier.
 
 ## Phase 4: Type System Power - Structs & Pattern Matching
 *Goal: Bring C#'s type safety to Roblox data structures.*

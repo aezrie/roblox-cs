@@ -22,6 +22,9 @@ function ApiTest:RunTest()
     local nested = part and part.Parent and part.Parent.Name
     print("Part name: " .. name)
     self:DoSomethingAsync()
+        self:DoSomethingAsync()
+    self:DoSomethingAsync()
+
 end
 function ApiTest:DoSomethingAsync()
     print("Doing something async...")

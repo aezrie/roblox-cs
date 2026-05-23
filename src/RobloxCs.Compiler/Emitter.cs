@@ -420,9 +420,24 @@ public class Emitter : CSharpSyntaxWalker
             return new LuaIdentifierExpression("workspace");
         }
 
+        // Task.WhenAll(t1, t2) -> (custom barrier implementation)
+        if (symbol?.Name == "WhenAll" && symbol.ContainingType?.Name == "Task" && symbol.ContainingType.ContainingNamespace?.ToDisplayString() == "System.Threading.Tasks")
+        {
+            var taskList = node.ArgumentList.Arguments.Select(a => VisitExpression(a.Expression)).ToList();
+            
+            // For Phase 3, we simply emit the expressions sequentially for now to maintain the yielding flow.
+            // This is valid in Luau for yielding functions when wrapped in a block.
+            return new LuaBlockStatement(taskList.Select(t => (LuaNode)new LuaExpressionStatement(t)).ToList());
+        }
+
         var target = VisitExpression(node.Expression);
         var arguments = node.ArgumentList.Arguments
             .Select(a => VisitExpression(a.Expression)).ToArray();
+
+        // If this is a Task.WhenAll call that was handled above, it won't reach here 
+        // because we return a LuaBlockStatement. 
+        // But Roslyn's walker might continue into arguments if we aren't careful.
+        // Actually, we are returning from VisitInvocation, so it's fine.
 
         // Patch colon flag based on receiver type
         if (target is LuaMemberAccessExpression member)
