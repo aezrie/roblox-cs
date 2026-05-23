@@ -5,7 +5,7 @@ function LinqTest.new()
     return self
 end
 function LinqTest:Run()
-    local parts = List.new()
+    local parts = {}
     local visibleParts = function()
         local _r = {}
         for _, _v in parts do
@@ -41,7 +41,7 @@ function LinqTest:Run()
             end
         end
         return _r
-    end():Clone()
+    end()
     local allVisible = function()
         local _r = true
         for _, _v in parts do
@@ -53,7 +53,7 @@ function LinqTest:Run()
             end
         end
         return _r
-    end():Clone()
+    end()
     local first = function()
         local _r = nil
         for _, _v in parts do
@@ -63,6 +63,11 @@ function LinqTest:Run()
         return _r
     end()
     Extensions.MyCustomExtension(parts)
+    table.insert(parts, Instance.new("Part"))
+    local count = #parts
+    local firstPart = parts[0 + 1]
+    table.remove(parts, 0 + 1)
+    table.clear(parts)
 end
 local Extensions = {}
 function Extensions.MyCustomExtension(list)

@@ -82,7 +82,16 @@ public class Emitter : CSharpSyntaxWalker
     private bool IsRobloxStruct(ITypeSymbol? type)
     {
         if (type == null) return false;
+        // Primitives like int, bool, string should not be cloned
+        if (type.IsValueType && type.SpecialType != SpecialType.None) return false;
+        
         return type.TypeKind == TypeKind.Struct || type.GetAttributes().Any(a => a.AttributeClass?.Name == "RobloxStructAttribute");
+    }
+
+    private bool IsListType(ITypeSymbol? type)
+    {
+        if (type == null) return false;
+        return type.Name == "List" && type.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic";
     }
 
     private LuaNode WrapCloneIfStruct(ExpressionSyntax node, LuaNode luaNode)
@@ -533,6 +542,7 @@ public class Emitter : CSharpSyntaxWalker
             PrefixUnaryExpressionSyntax prefixUnary       => VisitPrefixUnary(prefixUnary),
             ParenthesizedExpressionSyntax paren           => VisitExpression(paren.Expression),
             ObjectCreationExpressionSyntax objCreate      => VisitObjectCreation(objCreate),
+            ElementAccessExpressionSyntax elementAccess  => VisitElementAccess(elementAccess),
             ConditionalAccessExpressionSyntax condAccess  => VisitConditionalAccess(condAccess),
             AwaitExpressionSyntax awaitExpr               => VisitAwait(awaitExpr),
             IsPatternExpressionSyntax isPattern           => VisitIsPattern(isPattern),
@@ -552,6 +562,35 @@ public class Emitter : CSharpSyntaxWalker
         if (IsLinqMethod(symbol))
         {
             return VisitLinqInvocation(node, symbol);
+        }
+
+        // List Support
+        if (symbol != null && IsListType(symbol.ContainingType))
+        {
+            var receiverNode = (node.Expression as MemberAccessExpressionSyntax)?.Expression;
+            var receiver = receiverNode != null ? VisitExpression(receiverNode) : new LuaNilExpression();
+
+            if (symbol.Name == "Add")
+            {
+                var val = VisitExpression(node.ArgumentList.Arguments[0].Expression);
+                return new LuaInvocationExpression(
+                    new LuaMemberAccessExpression(new LuaIdentifierExpression("table"), "insert", false),
+                    new[] { receiver, val });
+            }
+            if (symbol.Name == "RemoveAt")
+            {
+                var idx = VisitExpression(node.ArgumentList.Arguments[0].Expression);
+                var luaIdx = new LuaBinaryExpression(idx, "+", new LuaLiteralExpression("1"));
+                return new LuaInvocationExpression(
+                    new LuaMemberAccessExpression(new LuaIdentifierExpression("table"), "remove", false),
+                    new[] { receiver, luaIdx });
+            }
+            if (symbol.Name == "Clear")
+            {
+                return new LuaInvocationExpression(
+                    new LuaMemberAccessExpression(new LuaIdentifierExpression("table"), "clear", false),
+                    new[] { receiver });
+            }
         }
 
         // Extension Methods
@@ -859,11 +898,39 @@ public class Emitter : CSharpSyntaxWalker
                 args.ToArray());
         }
 
+        if (IsListType(typeSymbol))
+        {
+            var fields = new List<(string?, LuaNode)>();
+            if (node.Initializer != null)
+            {
+                foreach (var expr in node.Initializer.Expressions)
+                {
+                    fields.Add((null, VisitExpression(expr)));
+                }
+            }
+            return new LuaTableConstructorExpression(fields);
+        }
+
         var typeName = typeSymbol?.Name ?? node.Type.ToString();
         var target = new LuaMemberAccessExpression(new LuaIdentifierExpression(typeName), "new", false);
         var creationArgs = (node.ArgumentList?.Arguments ?? default)
             .Select(a => VisitExpression(a.Expression)).ToArray();
         return new LuaInvocationExpression(target, creationArgs);
+    }
+
+    private LuaNode VisitElementAccess(ElementAccessExpressionSyntax node)
+    {
+        var expression = VisitExpression(node.Expression);
+        var arguments = node.ArgumentList.Arguments.Select(a => VisitExpression(a.Expression)).ToList();
+
+        var receiverType = _semanticModel.GetTypeInfo(node.Expression).Type;
+        if (IsListType(receiverType) || receiverType?.TypeKind == TypeKind.Array)
+        {
+            // Lua is 1-indexed
+            return new LuaIndexExpression(expression, new LuaBinaryExpression(arguments[0], "+", new LuaLiteralExpression("1")));
+        }
+
+        return new LuaIndexExpression(expression, arguments[0]);
     }
 
     private LuaNode VisitLiteral(LiteralExpressionSyntax node)
@@ -913,6 +980,13 @@ public class Emitter : CSharpSyntaxWalker
     private LuaNode VisitMemberAccess(MemberAccessExpressionSyntax node)
     {
         var symbol = _semanticModel.GetSymbolInfo(node).Symbol;
+        var receiverType = _semanticModel.GetTypeInfo(node.Expression).Type;
+
+        // List.Count -> #list
+        if (IsListType(receiverType) && node.Name.Identifier.Text == "Count")
+        {
+            return new LuaUnaryExpression("#", VisitExpression(node.Expression));
+        }
 
         // Game.Workspace -> workspace
         if (symbol?.Name == "Workspace" && (symbol.ContainingType?.Name == "Game" || symbol.ContainingType?.ToDisplayString() == "Roblox.Game"))
@@ -921,7 +995,6 @@ public class Emitter : CSharpSyntaxWalker
         }
 
         var expression = VisitExpression(node.Expression);
-        var receiverType = _semanticModel.GetTypeInfo(node.Expression).Type;
         var memberSymbol = _semanticModel.GetSymbolInfo(node).Symbol;
 
         var isMethod = memberSymbol?.Kind == SymbolKind.Method;

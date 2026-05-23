@@ -72,6 +72,11 @@ Here is the roadmap to build out the rest of the transpiler, ordered by priority
 
 - [x] **LINQ Fuser:** Detect `.Where().Select()` chains. Fuse them into a single efficient `for _, val in ipairs() do ... end` loop instead of emitting intermediate tables.
 - [x] **LINQ Terminals:** Implement `Any`, `All`, `FirstOrDefault`, `ToDictionary` as short-circuiting loop emissions.
+- [x] **List Mapping:** Map `List<T>` to native Luau tables `{}`.
+  - `new List<T>()` -> `{}`
+  - `list.Add(x)` -> `table.insert(list, x)`
+  - `list.Count` -> `#list`
+  - `list[i]` -> `list[i + 1]` (0-to-1 index correction)
 - [x] **Extension Methods:** Allow developers to write `instance.MyExtension()` and translate it to `Extensions.MyExtension(instance)`.
 
 ## Phase 6: Ecosystem & Developer Experience

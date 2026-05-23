@@ -27,6 +27,13 @@ public class LinqTest
 
         // Extension Method Test
         parts.MyCustomExtension();
+
+        // List Operations
+        parts.Add(new Part());
+        int count = parts.Count;
+        var firstPart = parts[0];
+        parts.RemoveAt(0);
+        parts.Clear();
     }
 }
 
