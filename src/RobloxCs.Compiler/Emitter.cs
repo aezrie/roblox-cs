@@ -859,7 +859,7 @@ public class Emitter : CSharpSyntaxWalker
                 args.ToArray());
         }
 
-        var typeName = node.Type.ToString();
+        var typeName = typeSymbol?.Name ?? node.Type.ToString();
         var target = new LuaMemberAccessExpression(new LuaIdentifierExpression(typeName), "new", false);
         var creationArgs = (node.ArgumentList?.Arguments ?? default)
             .Select(a => VisitExpression(a.Expression)).ToArray();

@@ -5,7 +5,7 @@ function LinqTest.new()
     return self
 end
 function LinqTest:Run()
-    local parts = List<Part>.new()
+    local parts = List.new()
     local visibleParts = function()
         local _r = {}
         for _, _v in parts do
