@@ -548,6 +548,28 @@ public class Emitter : CSharpSyntaxWalker
     {
         var symbol = _semanticModel.GetSymbolInfo(node).Symbol as IMethodSymbol;
 
+        // LINQ Support
+        if (IsLinqMethod(symbol))
+        {
+            return VisitLinqInvocation(node, symbol);
+        }
+
+        // Extension Methods
+        if (symbol?.IsExtensionMethod == true)
+        {
+            var receiverNode = (node.Expression as MemberAccessExpressionSyntax)?.Expression;
+            var receiver = receiverNode != null ? VisitExpression(receiverNode) : new LuaNilExpression();
+
+            var staticClass = symbol.ContainingType.Name;
+            var methodName = symbol.Name;
+
+            var targetExpr = new LuaMemberAccessExpression(new LuaIdentifierExpression(staticClass), methodName, false);
+            var args = new List<LuaNode> { receiver };
+            args.AddRange(node.ArgumentList.Arguments.Select(a => VisitExpression(a.Expression)));
+
+            return new LuaInvocationExpression(targetExpr, args.ToArray());
+        }
+
         // Console.WriteLine / Console.Write -> print()
         if (symbol?.ContainingType?.Name == "Console" &&
             symbol.ContainingType.ContainingNamespace?.ToDisplayString() == "System" &&
@@ -916,4 +938,165 @@ public class Emitter : CSharpSyntaxWalker
 
     private bool IsStringType(ExpressionSyntax node) =>
         _semanticModel.GetTypeInfo(node).Type?.SpecialType == SpecialType.System_String;
+
+    private bool IsLinqMethod(IMethodSymbol? symbol)
+    {
+        return symbol?.ContainingNamespace?.ToDisplayString() == "System.Linq";
+    }
+
+    private LuaNode VisitLinqInvocation(InvocationExpressionSyntax node, IMethodSymbol symbol)
+    {
+        var chain = new List<(IMethodSymbol Symbol, InvocationExpressionSyntax Node)>();
+        var current = node;
+
+        while (current != null)
+        {
+            var currentSymbol = _semanticModel.GetSymbolInfo(current).Symbol as IMethodSymbol;
+            if (currentSymbol == null || !IsLinqMethod(currentSymbol)) break;
+
+            chain.Insert(0, (currentSymbol, current));
+
+            if (current.Expression is MemberAccessExpressionSyntax memberAccess)
+            {
+                if (memberAccess.Expression is InvocationExpressionSyntax nextNode)
+                {
+                    current = nextNode;
+                }
+                else
+                {
+                    // Root of the chain
+                    var root = VisitExpression(memberAccess.Expression);
+                    return EmitLinqFusion(root, chain);
+                }
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return new LuaLiteralExpression("--[[ LINQ Chain failed to parse ]]");
+    }
+
+    private LuaNode EmitLinqFusion(LuaNode root, List<(IMethodSymbol Symbol, InvocationExpressionSyntax Node)> chain)
+    {
+        return new LuaInvocationExpression(
+            new LuaFunctionExpression(new List<string>(), CaptureBlock(() =>
+            {
+                var terminalSymbol = chain.Last().Symbol;
+                var terminalName = terminalSymbol.Name;
+
+                // Initialize result
+                if (terminalName == "ToList")
+                    EmitStatement(new LuaLocalDeclarationStatement("_r", new LuaTableConstructorExpression(new List<(string?, LuaNode)>())));
+                else if (terminalName == "Any")
+                    EmitStatement(new LuaLocalDeclarationStatement("_r", new LuaLiteralExpression("false")));
+                else if (terminalName == "All")
+                    EmitStatement(new LuaLocalDeclarationStatement("_r", new LuaLiteralExpression("true")));
+                else if (terminalName == "Count")
+                    EmitStatement(new LuaLocalDeclarationStatement("_r", new LuaLiteralExpression("0")));
+                else if (terminalName == "FirstOrDefault" || terminalName == "First")
+                    EmitStatement(new LuaLocalDeclarationStatement("_r", new LuaNilExpression()));
+
+                // Start building the loop body
+                var loopBody = CaptureBlock(() =>
+                {
+                    void EmitChainStep(int index, LuaNode current)
+                    {
+                        if (index >= chain.Count)
+                        {
+                            // Terminal action
+                            if (terminalName == "ToList")
+                            {
+                                EmitStatement(new LuaExpressionStatement(new LuaInvocationExpression(
+                                    new LuaMemberAccessExpression(new LuaIdentifierExpression("table"), "insert", false),
+                                    new[] { new LuaIdentifierExpression("_r"), current })));
+                            }
+                            else if (terminalName == "Any")
+                            {
+                                EmitStatement(new LuaAssignmentStatement(new LuaIdentifierExpression("_r"), new LuaLiteralExpression("true")));
+                                EmitStatement(new LuaReturnStatement(new LuaIdentifierExpression("_r")));
+                            }
+                            else if (terminalName == "Count")
+                            {
+                                EmitStatement(new LuaAssignmentStatement(new LuaIdentifierExpression("_r"),
+                                    new LuaBinaryExpression(new LuaIdentifierExpression("_r"), "+", new LuaLiteralExpression("1"))));
+                            }
+                            else if (terminalName == "FirstOrDefault" || terminalName == "First")
+                            {
+                                EmitStatement(new LuaAssignmentStatement(new LuaIdentifierExpression("_r"), current));
+                                EmitStatement(new LuaReturnStatement(new LuaIdentifierExpression("_r")));
+                            }
+                            return;
+                        }
+
+                        var (stepSymbol, stepNode) = chain[index];
+                        if (stepSymbol.Name == "Where")
+                        {
+                            var predicate = VisitExpression(stepNode.ArgumentList.Arguments[0].Expression);
+                            var condition = new LuaInvocationExpression(predicate, new[] { current });
+                            var thenBlock = CaptureBlock(() => EmitChainStep(index + 1, current));
+                            EmitStatement(new LuaIfStatement(condition, thenBlock, new List<(LuaNode, LuaBlockStatement)>(), null));
+                        }
+                        else if (stepSymbol.Name == "Select")
+                        {
+                            var selector = VisitExpression(stepNode.ArgumentList.Arguments[0].Expression);
+                            var transformed = new LuaInvocationExpression(selector, new[] { current });
+                            EmitChainStep(index + 1, transformed);
+                        }
+                        else if (stepSymbol.Name == "ToList" || stepSymbol.Name == "Any" || stepSymbol.Name == "All" ||
+                                 stepSymbol.Name == "Count" || stepSymbol.Name == "FirstOrDefault" || stepSymbol.Name == "First")
+                        {
+                            if (stepNode.ArgumentList.Arguments.Count > 0)
+                            {
+                                var predicate = VisitExpression(stepNode.ArgumentList.Arguments[0].Expression);
+                                var condition = new LuaInvocationExpression(predicate, new[] { current });
+
+                                if (stepSymbol.Name == "Any")
+                                {
+                                    var thenBlock = CaptureBlock(() =>
+                                    {
+                                        EmitStatement(new LuaAssignmentStatement(new LuaIdentifierExpression("_r"), new LuaLiteralExpression("true")));
+                                        EmitStatement(new LuaReturnStatement(new LuaIdentifierExpression("_r")));
+                                    });
+                                    EmitStatement(new LuaIfStatement(condition, thenBlock, new List<(LuaNode, LuaBlockStatement)>(), null));
+                                }
+                                else if (stepSymbol.Name == "All")
+                                {
+                                    var thenBlock = CaptureBlock(() =>
+                                    {
+                                        EmitStatement(new LuaAssignmentStatement(new LuaIdentifierExpression("_r"), new LuaLiteralExpression("false")));
+                                        EmitStatement(new LuaReturnStatement(new LuaIdentifierExpression("_r")));
+                                    });
+                                    EmitStatement(new LuaIfStatement(new LuaUnaryExpression("not", condition), thenBlock, new List<(LuaNode, LuaBlockStatement)>(), null));
+                                }
+                                else if (stepSymbol.Name == "FirstOrDefault" || stepSymbol.Name == "First")
+                                {
+                                    var thenBlock = CaptureBlock(() =>
+                                    {
+                                        EmitStatement(new LuaAssignmentStatement(new LuaIdentifierExpression("_r"), current));
+                                        EmitStatement(new LuaReturnStatement(new LuaIdentifierExpression("_r")));
+                                    });
+                                    EmitStatement(new LuaIfStatement(condition, thenBlock, new List<(LuaNode, LuaBlockStatement)>(), null));
+                                }
+                            }
+                            else
+                            {
+                                EmitChainStep(index + 1, current);
+                            }
+                        }
+                        else
+                        {
+                            EmitChainStep(index + 1, current);
+                        }
+                    }
+
+                    EmitChainStep(0, new LuaIdentifierExpression("_v"));
+                });
+
+                EmitStatement(new LuaForEachStatement("_v", root, loopBody));
+                EmitStatement(new LuaReturnStatement(new LuaIdentifierExpression("_r")));
+            })),
+            new LuaNode[] { });
+    }
 }

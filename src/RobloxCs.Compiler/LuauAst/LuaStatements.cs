@@ -25,6 +25,7 @@ public record LuaForEachStatement(
 
 public record LuaWhileStatement(LuaNode Condition, LuaBlockStatement Body) : LuaNode;
 public record LuaDoStatement(LuaBlockStatement Body) : LuaNode;
+public record LuaCommentStatement(string Comment) : LuaNode;
 
 
 public record LuaNumericForStatement(

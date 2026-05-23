@@ -39,6 +39,21 @@ public class Renderer
                 _sb.AppendLine();
                 break;
 
+            case LuaDoStatement @do:
+                WriteIndent();
+                _sb.AppendLine("do");
+                _indent++;
+                foreach (var s in @do.Body.Statements) Visit(s);
+                _indent--;
+                WriteIndent();
+                _sb.AppendLine("end");
+                break;
+
+            case LuaCommentStatement comment:
+                WriteIndent();
+                _sb.AppendLine($"-- {comment.Comment}");
+                break;
+
             case LuaAssignmentStatement assignStmt:
                 WriteIndent();
                 Visit(assignStmt.Target);

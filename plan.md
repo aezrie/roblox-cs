@@ -70,9 +70,9 @@ Here is the roadmap to build out the rest of the transpiler, ordered by priority
 ## Phase 5: LINQ & Advanced Emitter Passes
 *Goal: Write declarative data transformation.*
 
-- [ ] **LINQ Fuser:** Detect `.Where().Select()` chains. Fuse them into a single efficient `for _, val in ipairs() do ... end` loop instead of emitting intermediate tables.
-- [ ] **LINQ Terminals:** Implement `Any`, `All`, `FirstOrDefault`, `ToDictionary` as short-circuiting loop emissions.
-- [ ] **Extension Methods:** Allow developers to write `instance.MyExtension()` and translate it to `Extensions.MyExtension(instance)`.
+- [x] **LINQ Fuser:** Detect `.Where().Select()` chains. Fuse them into a single efficient `for _, val in ipairs() do ... end` loop instead of emitting intermediate tables.
+- [x] **LINQ Terminals:** Implement `Any`, `All`, `FirstOrDefault`, `ToDictionary` as short-circuiting loop emissions.
+- [x] **Extension Methods:** Allow developers to write `instance.MyExtension()` and translate it to `Extensions.MyExtension(instance)`.
 
 ## Phase 6: Ecosystem & Developer Experience
 *Goal: Make it production-ready and a joy to use.*

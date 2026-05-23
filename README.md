@@ -2,7 +2,7 @@
 
 `roblox-cs` is a powerful C# to Luau transpiler designed specifically for Roblox game development. Inspired by the success of `roblox-ts`, it enables developers to leverage C#'s robust type system, modern language features, and industry-standard tooling while targeting the Roblox platform.
 
-## 🚀 Key Features
+## Key Features
 
 - **Roslyn-Powered**: Uses the official Microsoft.CodeAnalysis API for perfect C# parsing and semantic analysis.
 - **Idiomatic Luau**: Generates readable, performant Luau code that follows Roblox best practices.
@@ -14,7 +14,7 @@
   - **Structs**: C# structs (and `[RobloxStruct]` classes) gain value semantics in Luau via automatic cloning.
   - **Lambdas**: Full support for anonymous functions and async event handlers.
 
-## 🛠️ Installation
+## Installation
 
 ### Prerequisites
 - [.NET 9.0 SDK](https://dotnet.microsoft.com/download)
@@ -27,7 +27,7 @@ cd roblox-cs
 dotnet build
 ```
 
-## 📖 Quick Start
+## Quick Start
 
 Write your Roblox logic in C#:
 
@@ -92,14 +92,14 @@ end
 return GameController
 ```
 
-## 🏗️ Project Structure
+## Project Structure
 
 - `src/RobloxCs.Compiler`: The core transpilation logic (Emitter & Renderer).
 - `src/RobloxCs.Bindings`: C# stubs for the Roblox API.
 - `src/RobloxCs.Cli`: Command-line interface for the transpiler.
 - `vscode-extension`: (In Progress) Language server support for VS Code.
 
-## 📜 Roadmap
+## Roadmap
 
 - [x] **Phase 1**: Foundational pipeline (Roslyn -> Luau AST).
 - [x] **Phase 2**: Core game loop features (Events, Lambdas, OOP).
@@ -112,6 +112,6 @@ return GameController
 
 Contributions are welcome! Please check the [plan.md](plan.md) for current progress and upcoming tasks.
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License.
